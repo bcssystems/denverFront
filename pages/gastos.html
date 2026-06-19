@@ -1,0 +1,72 @@
+<div class="page-content">
+  <div class="page-header">
+    <div>
+      <h4><i class="fas fa-money-bill-wave me-2" style="color:var(--primary)"></i>Gastos</h4>
+      <small class="text-muted">Solicitud y autorizaci&oacute;n de gastos</small>
+    </div>
+    <button class="btn btn-primary ripple" id="btnNuevoGasto">
+      <i class="fas fa-plus me-1"></i> Solicitar Gasto
+    </button>
+  </div>
+
+  <div class="filter-bar">
+    <select class="form-select" id="filtroCajaGasto" style="min-width:220px">
+      <option value="">Todas las cajas</option>
+    </select>
+    <button class="btn btn-outline-warning ripple" id="btnVerPendientes">
+      <i class="fas fa-clock me-1"></i> Pendientes
+    </button>
+  </div>
+
+  <div class="panel-card overflow-hidden">
+    <div class="table-responsive">
+      <table class="table table-custom mb-0">
+        <thead>
+          <tr>
+            <th>Caja</th>
+            <th>Descripci&oacute;n</th>
+            <th>Monto</th>
+            <th>Solicit&oacute;</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th style="width:120px"></th>
+          </tr>
+        </thead>
+        <tbody id="tableGastosBody">
+          <tr><td colspan="7"><div class="empty-state"><i class="fas fa-money-bill-wave"></i><p>Cargando...</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="gastoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold" id="gastoModalTitle">Solicitar Gasto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formGasto">
+          <div class="mb-3">
+            <label class="form-label">Caja <span class="text-danger">*</span></label>
+            <select class="form-select" id="gastoCaja"></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Descripci&oacute;n <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="gastoDescripcion" required maxlength="200">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Monto <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="gastoMonto" required min="0.01" step="0.01">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary px-4 ripple" id="btnGuardarGasto">Solicitar</button>
+      </div>
+    </div>
+  </div>
+</div>

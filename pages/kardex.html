@@ -1,0 +1,49 @@
+<div class="page-content">
+  <div class="page-header">
+    <div>
+      <h4><i class="fas fa-book me-2" style="color:var(--primary)"></i>Kardex</h4>
+      <small class="text-muted">Historial de movimientos de inventario</small>
+    </div>
+    <button class="btn btn-outline-primary ripple" id="btnExportarKardex">
+      <i class="fas fa-download me-1"></i> Exportar CSV
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar filter-bar-4cols">
+    <div>
+      <label class="form-label mb-1 small text-muted">Desde</label>
+      <input type="date" class="form-control" id="filterKardexFechaInicio">
+    </div>
+    <div>
+      <label class="form-label mb-1 small text-muted">Hasta</label>
+      <input type="date" class="form-control" id="filterKardexFechaFin">
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="panel-card overflow-hidden">
+    <div class="table-responsive">
+      <table class="table table-custom mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Entidad</th>
+            <th>Detalle</th>
+            <th>Cantidad</th>
+            <th>Stock</th>
+            <th>Responsable</th>
+            <th>Origen</th>
+          </tr>
+        </thead>
+        <tbody id="tableKardexBody">
+          <tr><td colspan="8"><div class="empty-state"><i class="fas fa-book"></i><p>Cargando...</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="mt-3" id="paginationKardex"></div>
+</div>
