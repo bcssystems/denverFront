@@ -1,6 +1,7 @@
 let state = {
   caja: null,
   cajas: [],
+  sucursales: [],
   clientes: [],
   productos: [],
   cart: [],
@@ -36,6 +37,7 @@ export function init() {
 
 function bindEvents() {
   document.getElementById('btnEntrarCaja')?.addEventListener('click', entrarCaja);
+
   document.getElementById('btnCobrarPOS')?.addEventListener('click', cobrarVenta);
   document.getElementById('btnEsperaPOS')?.addEventListener('click', ponerEnEspera);
   document.getElementById('btnNuevoClientePOS')?.addEventListener('click', () => abrirClienteModal());
@@ -99,10 +101,34 @@ async function mostrarSelectorCaja() {
   document.getElementById('pos-caja-selector').classList.remove('d-none');
   document.getElementById('pos-interface').classList.add('d-none');
   try {
-    state.cajas = await API.get('/cajas');
-    const sel = document.getElementById('posCajaSelect');
-    sel.innerHTML = '<option value="">-- Selecciona una caja --</option>' +
-      state.cajas.map(c => `<option value="${c.idCaja}">${Utils.esc(c.nombre)}</option>`).join('');
+    state.sucursales = await API.get('/sucursales');
+    const selSuc = document.getElementById('posSucursalSelect');
+    selSuc.innerHTML = '<option value="">-- Selecciona una sucursal --</option>' +
+      state.sucursales.map(s => `<option value="${s.idSucursal}">${Utils.esc(s.nombre)}</option>`).join('');
+    selSuc.addEventListener('change', async () => {
+      const idSucursal = parseInt(selSuc.value);
+      const cajaSel = document.getElementById('posCajaSelect');
+      const entrarBtn = document.getElementById('btnEntrarCaja');
+      if (idSucursal) {
+        try {
+          state.cajas = await API.get('/cajas/sucursal/' + idSucursal);
+          cajaSel.innerHTML = '<option value="">-- Selecciona una caja --</option>' +
+            state.cajas.map(c => `<option value="${c.idCaja}">${Utils.esc(c.nombre)}</option>`).join('');
+          cajaSel.disabled = false;
+        } catch (_) {
+          cajaSel.innerHTML = '<option value="">Error al cargar cajas</option>';
+          cajaSel.disabled = true;
+        }
+      } else {
+        cajaSel.innerHTML = '<option value="">-- Primero selecciona sucursal --</option>';
+        cajaSel.disabled = true;
+        entrarBtn.disabled = true;
+      }
+    });
+    document.getElementById('posCajaSelect').addEventListener('change', () => {
+      const id = parseInt(document.getElementById('posCajaSelect').value);
+      document.getElementById('btnEntrarCaja').disabled = !id;
+    });
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
@@ -751,22 +777,27 @@ async function realizarVentaRapida() {
   const desc = document.getElementById('posVrDescripcion').value.trim();
   const precioVenta = parseFloat(document.getElementById('posVrVenta').value);
   const cantidad = parseInt(document.getElementById('posVrCantidad').value) || 1;
-  const precioCompra = parseFloat(document.getElementById('posVrCompra').value) || 0;
-  const idCliente = parseInt(document.getElementById('posVrCliente').value) || null;
 
   if (!desc) { Utils.showToast('Descripci\u00f3n requerida', 'warning'); return; }
   if (!precioVenta || precioVenta <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
 
-  try {
-    await API.post('/ventas/caja/' + state.caja.idCaja + '/rapida?descripcion=' + encodeURIComponent(desc) +
-      '&precioCompra=' + precioCompra + '&precioVenta=' + precioVenta +
-      '&cantidad=' + cantidad + (idCliente ? '&idCliente=' + idCliente : ''), {});
-    Utils.showToast('Venta r\u00e1pida realizada', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('posVentaRapidaModal'))?.hide();
-    document.getElementById('posVrDescripcion').value = '';
-    document.getElementById('posVrVenta').value = '';
-    await refreshCaja();
-  } catch (err) { Utils.showToast(err.message, 'error'); }
+  const tempId = -Date.now();
+  state.cart.push({
+    idProducto: tempId,
+    nombre: desc,
+    sku: 'VR',
+    cantidad: cantidad,
+    precioUnitario: precioVenta,
+    stockActual: 999999,
+  });
+
+  renderCart();
+  bootstrap.Modal.getInstance(document.getElementById('posVentaRapidaModal'))?.hide();
+  document.getElementById('posVrDescripcion').value = '';
+  document.getElementById('posVrVenta').value = '';
+  document.getElementById('posVrCantidad').value = '1';
+  document.getElementById('posVrCompra').value = '';
+  Utils.showToast('Item agregado al carrito', 'success');
 }
 
 async function abandonarCaja() {

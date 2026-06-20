@@ -206,7 +206,9 @@ async function abrirModal(id) {
   form.reset();
 
   document.getElementById('productoId').value = '';
-  document.getElementById('productoSku').value = '';
+
+  const skuField = document.getElementById('productoSku');
+  const editing = !!id;
 
   const sucursalRow = document.getElementById('productoSucursalRow');
   if (sucursalRow) sucursalRow.style.display = id ? 'none' : '';
@@ -216,7 +218,6 @@ async function abrirModal(id) {
     try {
       const p = await API.get('/productos/' + id);
       document.getElementById('productoId').value = p.idProducto;
-      document.getElementById('productoSku').value = p.sku;
       document.getElementById('productoNombre').value = p.nombre || '';
       document.getElementById('productoDescripcion').value = p.descripcion || '';
       document.getElementById('productoPrecio1').value = p.precio1 || '';
@@ -226,7 +227,16 @@ async function abrirModal(id) {
       document.getElementById('productoStock').value = p.stockActual || 0;
       document.getElementById('productoStockMin').value = p.stockMinimo || '';
       document.getElementById('productoStockMax').value = p.stockMaximo || '';
+      document.getElementById('productoMaterial').value = p.material || '';
+      document.getElementById('productoNumeroMolde').value = p.numeroMolde || '';
+      document.getElementById('productoTalla').value = p.talla || '';
+      document.getElementById('productoAccesorio1').value = p.accesorio1 || '';
+      document.getElementById('productoAccesorio2').value = p.accesorio2 || '';
       document.getElementById('productoActivo').checked = p.activo !== false;
+      if (skuField) {
+        skuField.value = p.sku || '';
+        skuField.readOnly = true;
+      }
     } catch (err) {
       Utils.showToast(err.message, 'error');
       return;
@@ -234,6 +244,10 @@ async function abrirModal(id) {
   } else {
     title.textContent = 'Nuevo Producto';
     document.getElementById('productoActivo').checked = true;
+    if (skuField) {
+      skuField.value = '';
+      skuField.readOnly = false;
+    }
   }
 
   modal.show();
@@ -243,6 +257,7 @@ async function guardarProducto() {
   Utils.syncSearchableSelects();
 
   const data = {
+    sku: document.getElementById('productoSku').value.trim(),
     nombre: document.getElementById('productoNombre').value.trim(),
     descripcion: document.getElementById('productoDescripcion').value.trim(),
     precio1: parseFloat(document.getElementById('productoPrecio1').value) || null,
@@ -252,6 +267,11 @@ async function guardarProducto() {
     stockActual: parseInt(document.getElementById('productoStock').value) || 0,
     stockMinimo: parseInt(document.getElementById('productoStockMin').value) || null,
     stockMaximo: parseInt(document.getElementById('productoStockMax').value) || null,
+    material: document.getElementById('productoMaterial').value.trim() || null,
+    numeroMolde: document.getElementById('productoNumeroMolde').value.trim() || null,
+    talla: document.getElementById('productoTalla').value.trim() || null,
+    accesorio1: document.getElementById('productoAccesorio1').value.trim() || null,
+    accesorio2: document.getElementById('productoAccesorio2').value.trim() || null,
     activo: document.getElementById('productoActivo').checked,
   };
 
@@ -260,6 +280,10 @@ async function guardarProducto() {
     if (sel) data.idSucursal = parseInt(sel.value) || null;
   }
 
+  if (!data.sku) {
+    Utils.showToast('El SKU es obligatorio', 'warning');
+    return;
+  }
   if (!data.nombre) {
     Utils.showToast('El nombre es obligatorio', 'warning');
     return;

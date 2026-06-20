@@ -81,13 +81,13 @@
           <input type="hidden" id="productoId">
           <input type="hidden" id="productoSku">
           <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">SKU <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="productoSku" required maxlength="50">
+            </div>
             <div class="col-md-8">
               <label class="form-label">Nombre <span class="text-danger">*</span></label>
               <input type="text" class="form-control" id="productoNombre" required maxlength="200">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Stock Actual</label>
-              <input type="number" class="form-control" id="productoStock" min="0">
             </div>
             <div class="col-12">
               <label class="form-label">Descripción</label>
@@ -109,20 +109,46 @@
               <label class="form-label">Precio 4</label>
               <input type="number" class="form-control" id="productoPrecio4" step="0.01" min="0">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
+              <label class="form-label">Stock Actual</label>
+              <input type="number" class="form-control" id="productoStock" min="0">
+            </div>
+            <div class="col-md-3">
               <label class="form-label">Stock Mínimo</label>
               <input type="number" class="form-control" id="productoStockMin" min="0">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Stock Máximo</label>
               <input type="number" class="form-control" id="productoStockMax" min="0">
             </div>
-            <div class="col-md-4 d-flex align-items-end">
+            <div class="col-md-3 d-flex align-items-end">
               <div class="form-check">
-                <input type="checkbox" class="form-check-input" id="productoActivo">
+                <input type="checkbox" class="form-check-input" id="productoActivo" checked>
                 <label class="form-check-label" for="productoActivo">Producto activo</label>
               </div>
             </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-md-4">
+              <label class="form-label">Material</label>
+              <input type="text" class="form-control" id="productoMaterial" maxlength="100">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Número de Molde</label>
+              <input type="text" class="form-control" id="productoNumeroMolde" maxlength="50">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Talla</label>
+              <input type="text" class="form-control" id="productoTalla" maxlength="20">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Accesorio 1</label>
+              <input type="text" class="form-control" id="productoAccesorio1" maxlength="100">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Accesorio 2</label>
+              <input type="text" class="form-control" id="productoAccesorio2" maxlength="100">
+            </div>
+            <div class="col-md-4"></div>
             <div class="col-12" id="productoSucursalRow">
               <label class="form-label">Sucursal (stock inicial)</label>
               <select class="form-select sucursal-stock-select" id="productoSucursal">

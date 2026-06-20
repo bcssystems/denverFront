@@ -347,6 +347,23 @@ const Utils = {
     else input.value = '';
   },
 
+  showDialog(title, bodyHtml) {
+    const existing = document.getElementById('dynamicDialog');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal fade show d-block';
+    overlay.id = 'dynamicDialog';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    overlay.innerHTML =
+      '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow">' +
+        '<div class="modal-header border-0"><h5 class="modal-title fw-bold">' + title + '</h5>' +
+        '<button type="button" class="btn-close" onclick="document.getElementById(\'dynamicDialog\').remove()"></button></div>' +
+        '<div class="modal-body">' + bodyHtml + '</div>' +
+        '<div class="modal-footer border-0"><button type="button" class="btn btn-light btn-sm" onclick="document.getElementById(\'dynamicDialog\').remove()">Cerrar</button></div>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+  },
+
   syncSearchableSelects() {
     document.querySelectorAll('.searchable-wrapper').forEach(function (wrapper) {
       const select = wrapper.querySelector('.searchable-original');

@@ -67,7 +67,6 @@ function renderTable() {
         ` : `
           <button class="btn-action" style="color:var(--success)" data-id="${c.idCaja}" data-action="abrir" title="Abrir Caja"><i class="fas fa-unlock"></i></button>
         `}
-        <button class="btn-action btn-action-image" data-id="${c.idCaja}" data-action="movimientos" title="Movimientos"><i class="fas fa-exchange-alt"></i></button>
         <button class="btn-action btn-action-delete" data-id="${c.idCaja}" title="Eliminar"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`;
@@ -86,7 +85,6 @@ function handleTableClick(e) {
   else if (action === 'cerrar') cerrarCaja(id);
   else if (action === 'ingreso') abrirMovimientoModal(id, 'INGRESO');
   else if (action === 'egreso') abrirMovimientoModal(id, 'EGRESO');
-  else if (action === 'movimientos') verMovimientos(id);
   else if (action === 'corte-preview') previewCorte(id);
 }
 
