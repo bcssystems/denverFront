@@ -111,8 +111,11 @@ function renderTable() {
   }
 
   tbody.innerHTML = state.data.map(p => {
-    const imgHtml = p.multimedia && p.multimedia.length > 0
-      ? `<img src="${Utils.esc(p.multimedia.find(m => m.esPrincipal)?.url || p.multimedia[0].url)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover" alt="">`
+    const imgUrl = p.multimedia && p.multimedia.length > 0
+      ? API.mediaBaseUrl + (p.multimedia.find(m => m.esPrincipal)?.url || p.multimedia[0].url)
+      : null;
+    const imgHtml = imgUrl
+      ? `<img src="${Utils.esc(imgUrl)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover" alt="">`
       : '<div style="width:40px;height:40px;border-radius:6px;background:var(--border-light);display:flex;align-items:center;justify-content:center;color:var(--text-muted)"><i class="fas fa-image"></i></div>';
 
     let stockDisplay = p.stockActual;
@@ -401,13 +404,14 @@ function renderMultimedia(list) {
   }
 
   container.innerHTML = list.map(m => {
+    const mediaUrl = API.mediaBaseUrl + m.url;
     const isVideo = m.tipo === 'VIDEO';
     const badge = m.esPrincipal ? '<div class="media-badge"><i class="fas fa-star"></i></div>' : '';
     return `<div class="media-item">
       ${badge}
       ${isVideo
-        ? '<video src="' + Utils.esc(m.url) + '" muted></video>'
-        : '<img src="' + Utils.esc(m.url) + '" alt="' + Utils.esc(m.nombreArchivo) + '">'}
+        ? '<video src="' + Utils.esc(mediaUrl) + '" muted></video>'
+        : '<img src="' + Utils.esc(mediaUrl) + '" alt="' + Utils.esc(m.nombreArchivo) + '">'}
       <button class="media-delete" data-id="${m.idMultimedia}" title="Eliminar"><i class="fas fa-times"></i></button>
     </div>`;
   }).join('');

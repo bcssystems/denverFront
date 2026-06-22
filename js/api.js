@@ -1,5 +1,6 @@
 const API = {
   baseUrl: '/api/v1',
+  mediaBaseUrl: 'http://localhost:8080',
 
   getToken() {
     return localStorage.getItem('authToken');
