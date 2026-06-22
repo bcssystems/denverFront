@@ -34,6 +34,12 @@ function bindEvents() {
       cargarClientes(0);
     }, 400));
   }
+  document.getElementById('clienteCp')?.addEventListener('input', Utils.debounce(function() {
+    const cp = this.value.trim();
+    if (cp.length === 5) {
+      cargarColonias(cp, '');
+    }
+  }, 500));
 }
 
 async function cargarPaises() {
@@ -73,7 +79,7 @@ function renderTable() {
   if (!tbody) return;
 
   if (!state.data || state.data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-address-book"></i><p>No hay clientes</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-address-book"></i><p>No hay clientes</p></div></td></tr>';
     return;
   }
 
@@ -83,6 +89,7 @@ function renderTable() {
     <td>${Utils.esc(c.telefono) || '-'}</td>
     <td>${Utils.esc(c.codigoPais) || '-'}</td>
     <td>${Utils.esc(c.regimenFiscal) || '-'}</td>
+    <td style="max-width:200px;white-space:normal">${Utils.esc(c.direccion || '')}${c.cp ? ' (CP: ' + c.cp + ')' : ''}</td>
     <td class="acciones-cell">
       <button class="btn-action btn-action-edit" data-id="${c.idCliente}" title="Editar"><i class="fas fa-edit"></i></button>
       <button class="btn-action btn-action-delete" data-id="${c.idCliente}" title="Eliminar"><i class="fas fa-trash"></i></button>
@@ -144,6 +151,16 @@ function abrirModal(id) {
       document.getElementById('clienteWhatsapp').value = c.whatsapp || '';
       document.getElementById('clienteEmpresa').value = c.empresa || '';
       document.getElementById('clienteRegimen').value = c.regimenFiscal || '';
+      document.getElementById('clienteCp').value = c.cp || '';
+      document.getElementById('clienteEstado').value = c.estado || '';
+      document.getElementById('clienteMunicipio').value = c.municipio || '';
+      document.getElementById('clienteCalle').value = c.calle || '';
+      document.getElementById('clienteNumExt').value = c.numExt || '';
+      document.getElementById('clienteNumInt').value = c.numInt || '';
+      // Load colonias if CP is set
+      if (c.cp) {
+        cargarColonias(c.cp, c.colonia || '');
+      }
     }
   }
   modal.show();
@@ -159,6 +176,8 @@ async function guardarCliente() {
     whatsapp: document.getElementById('clienteWhatsapp').value.trim(),
     empresa: document.getElementById('clienteEmpresa').value.trim(),
     regimenFiscal: document.getElementById('clienteRegimen').value,
+    cp: document.getElementById('clienteCp').value.trim() || null,
+    direccion: buildDireccionString(),
   };
 
   if (!data.nombre) { Utils.showToast('El nombre es obligatorio', 'warning'); return; }
@@ -187,4 +206,66 @@ async function confirmarEliminar(id) {
     Utils.showToast('Cliente eliminado', 'success');
     cargarClientes(state.currentPage);
   } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function buildDireccionString() {
+  const calle = document.getElementById('clienteCalle').value.trim();
+  const numExt = document.getElementById('clienteNumExt').value.trim();
+  const numInt = document.getElementById('clienteNumInt').value.trim();
+  const colonia = document.getElementById('clienteColonia')?.value || '';
+  const municipio = document.getElementById('clienteMunicipio').value.trim();
+  const estado = document.getElementById('clienteEstado').value.trim();
+  const cp = document.getElementById('clienteCp').value.trim();
+
+  const parts = [];
+  if (calle) parts.push(calle);
+  if (numExt) parts.push('Ext. ' + numExt);
+  if (numInt) parts.push('Int. ' + numInt);
+  if (colonia) parts.push(colonia);
+  if (municipio) parts.push(municipio);
+  if (estado) parts.push(estado);
+  if (cp) parts.push('C.P. ' + cp);
+
+  return parts.join(', ');
+}
+
+const cpCache = {};
+
+async function cargarColonias(cp, selectedColonia) {
+  if (!cp || cp.length !== 5) return;
+  if (cpCache[cp]) {
+    aplicarDatosCP(cpCache[cp], selectedColonia);
+    return;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch('https://api.zippopotam.us/MX/' + cp, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const data = await response.json();
+    if (data && data.places) {
+      const result = {
+        colonias: data.places.map(p => p['place name']),
+        estado: data.places[0]?.state || ''
+      };
+      cpCache[cp] = result;
+      aplicarDatosCP(result, selectedColonia);
+    }
+  } catch (_) {
+    document.getElementById('clienteEstado').value = '';
+    document.getElementById('clienteColonia').innerHTML = '<option value="">No disponible</option>';
+    console.warn('Error al consultar CP:', cp);
+  }
+}
+
+function aplicarDatosCP(result, selectedColonia) {
+  const sel = document.getElementById('clienteColonia');
+  if (sel) {
+    sel.innerHTML = '<option value="">Seleccionar...</option>' +
+      result.colonias.map(c => `<option value="${c}" ${c === selectedColonia ? 'selected' : ''}>${c}</option>`).join('');
+    sel.disabled = false;
+  }
+  const estadoInput = document.getElementById('clienteEstado');
+  if (estadoInput) estadoInput.value = result.estado;
 }

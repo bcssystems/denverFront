@@ -23,11 +23,12 @@
             <th>Tel&eacute;fono</th>
             <th>Pa&iacute;s</th>
             <th>R&eacute;gimen Fiscal</th>
+            <th>Direcci&oacute;n</th>
             <th style="width:100px"></th>
           </tr>
         </thead>
         <tbody id="tableClientesBody">
-          <tr><td colspan="6"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
+          <tr><td colspan="7"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -37,7 +38,7 @@
 </div>
 
 <div class="modal fade" id="clienteModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0">
         <h5 class="modal-title fw-bold" id="clienteModalTitle">Nuevo Cliente</h5>
@@ -78,6 +79,37 @@
             <div class="col-md-6">
               <label class="form-label">R&eacute;gimen Fiscal <span class="text-danger">*</span></label>
               <select class="form-select" id="clienteRegimen"></select>
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-md-2">
+              <label class="form-label">C.P. <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="clienteCp" maxlength="5" placeholder="12345" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Estado</label>
+              <input type="text" class="form-control" id="clienteEstado" readonly>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Municipio</label>
+              <input type="text" class="form-control" id="clienteMunicipio">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Colonia</label>
+              <select class="form-select" id="clienteColonia">
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Calle</label>
+              <input type="text" class="form-control" id="clienteCalle" maxlength="200">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">N&uacute;m. Exterior</label>
+              <input type="text" class="form-control" id="clienteNumExt" maxlength="20">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">N&uacute;m. Interior</label>
+              <input type="text" class="form-control" id="clienteNumInt" maxlength="20">
             </div>
           </div>
         </form>

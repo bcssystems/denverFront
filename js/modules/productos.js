@@ -208,10 +208,9 @@ async function abrirModal(id) {
   document.getElementById('productoId').value = '';
 
   const skuField = document.getElementById('productoSku');
-  const editing = !!id;
 
-  const sucursalRow = document.getElementById('productoSucursalRow');
-  if (sucursalRow) sucursalRow.style.display = id ? 'none' : '';
+  // Generate dynamic stock inputs per sucursal
+  await generarStockInputs(id);
 
   if (id) {
     title.textContent = 'Editar Producto';
@@ -224,11 +223,8 @@ async function abrirModal(id) {
       document.getElementById('productoPrecio2').value = p.precio2 || '';
       document.getElementById('productoPrecio3').value = p.precio3 || '';
       document.getElementById('productoPrecio4').value = p.precio4 || '';
-      document.getElementById('productoStock').value = p.stockActual || 0;
-      document.getElementById('productoStockMin').value = p.stockMinimo || '';
-      document.getElementById('productoStockMax').value = p.stockMaximo || '';
       document.getElementById('productoMaterial').value = p.material || '';
-      document.getElementById('productoNumeroMolde').value = p.numeroMolde || '';
+      document.getElementById('productoTipoMolde').value = p.tipoMolde || '';
       document.getElementById('productoTalla').value = p.talla || '';
       document.getElementById('productoAccesorio1').value = p.accesorio1 || '';
       document.getElementById('productoAccesorio2').value = p.accesorio2 || '';
@@ -237,6 +233,16 @@ async function abrirModal(id) {
         skuField.value = p.sku || '';
         skuField.readOnly = true;
       }
+      // Fill stock inputs per sucursal
+      const invs = p.inventarioSucursales || [];
+      invs.forEach(inv => {
+        const stockInput = document.getElementById('stock_' + inv.idSucursal);
+        const minInput = document.getElementById('stockMin_' + inv.idSucursal);
+        const maxInput = document.getElementById('stockMax_' + inv.idSucursal);
+        if (stockInput) stockInput.value = inv.stock || 0;
+        if (minInput) minInput.value = inv.stockMinimo || '';
+        if (maxInput) maxInput.value = inv.stockMaximo || '';
+      });
     } catch (err) {
       Utils.showToast(err.message, 'error');
       return;
@@ -253,8 +259,55 @@ async function abrirModal(id) {
   modal.show();
 }
 
+async function generarStockInputs(editingId) {
+  const container = document.getElementById('stockSucursalInputs');
+  if (!container) return;
+  try {
+    const sucursales = await API.get('/sucursales');
+    container.innerHTML = '<div class="row g-2">' + sucursales.map(s => 
+      `<div class="col-md-4 mb-2">
+        <div class="p-2 border rounded">
+          <div class="fw-semibold small mb-1">${Utils.esc(s.nombre)}</div>
+          <div class="row g-1">
+            <div class="col-4">
+              <input type="number" class="form-control form-control-sm stock-input" id="stock_${s.idSucursal}" placeholder="Stock" min="0" ${editingId ? '' : 'value="0"'}>
+            </div>
+            <div class="col-4">
+              <input type="number" class="form-control form-control-sm" id="stockMin_${s.idSucursal}" placeholder="Mín" min="0">
+            </div>
+            <div class="col-4">
+              <input type="number" class="form-control form-control-sm" id="stockMax_${s.idSucursal}" placeholder="Máx" min="0">
+            </div>
+          </div>
+        </div>
+      </div>`
+    ).join('') + '</div>';
+  } catch (err) {
+    container.innerHTML = '<p class="text-muted small">Error al cargar sucursales</p>';
+  }
+}
+
 async function guardarProducto() {
   Utils.syncSearchableSelects();
+
+  const inventarios = [];
+  try {
+    const sucursales = await API.get('/sucursales');
+    sucursales.forEach(s => {
+      const stock = parseInt(document.getElementById('stock_' + s.idSucursal).value) || 0;
+      const stockMin = parseInt(document.getElementById('stockMin_' + s.idSucursal).value) || null;
+      const stockMax = parseInt(document.getElementById('stockMax_' + s.idSucursal).value) || null;
+      inventarios.push({
+        idSucursal: s.idSucursal,
+        stock: stock,
+        stockMinimo: stockMin,
+        stockMaximo: stockMax,
+      });
+    });
+  } catch (err) {
+    Utils.showToast('Error al cargar sucursales', 'error');
+    return;
+  }
 
   const data = {
     sku: document.getElementById('productoSku').value.trim(),
@@ -264,21 +317,14 @@ async function guardarProducto() {
     precio2: parseFloat(document.getElementById('productoPrecio2').value) || null,
     precio3: parseFloat(document.getElementById('productoPrecio3').value) || null,
     precio4: parseFloat(document.getElementById('productoPrecio4').value) || null,
-    stockActual: parseInt(document.getElementById('productoStock').value) || 0,
-    stockMinimo: parseInt(document.getElementById('productoStockMin').value) || null,
-    stockMaximo: parseInt(document.getElementById('productoStockMax').value) || null,
     material: document.getElementById('productoMaterial').value.trim() || null,
-    numeroMolde: document.getElementById('productoNumeroMolde').value.trim() || null,
+    tipoMolde: document.getElementById('productoTipoMolde').value.trim() || null,
     talla: document.getElementById('productoTalla').value.trim() || null,
     accesorio1: document.getElementById('productoAccesorio1').value.trim() || null,
     accesorio2: document.getElementById('productoAccesorio2').value.trim() || null,
     activo: document.getElementById('productoActivo').checked,
+    inventarios: inventarios,
   };
-
-  if (!state.editingId) {
-    const sel = document.getElementById('productoSucursal');
-    if (sel) data.idSucursal = parseInt(sel.value) || null;
-  }
 
   if (!data.sku) {
     Utils.showToast('El SKU es obligatorio', 'warning');
@@ -416,7 +462,7 @@ async function renderStockSucursal(idProducto) {
     container.innerHTML = inv.map(i =>
       `<div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded">
         <span><strong>${Utils.esc(i.sucursalNombre)}</strong></span>
-        <span class="fw-semibold ${Utils.getStockClass(i.stock, p.stockMinimo)}">${i.stock} unidades</span>
+        <span class="fw-semibold ${Utils.getStockClass(i.stock, p.stockMinimo)}">${i.stock} uds (min: ${i.stockMinimo != null ? i.stockMinimo : '-'}, max: ${i.stockMaximo != null ? i.stockMaximo : '-'})</span>
       </div>`
     ).join('');
   } catch (err) {

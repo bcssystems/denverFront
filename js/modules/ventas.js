@@ -57,7 +57,7 @@ function bindEvents() {
   document.getElementById('btnCancelarVentaPOS')?.addEventListener('click', abrirCancelarVentaModal);
   document.getElementById('btnConfirmarCancelarPOS')?.addEventListener('click', confirmarCancelarVenta);
   document.getElementById('btnVentaRapidaPOS')?.addEventListener('click', () => {
-    cargarClientesSelect('posVrCliente');
+    // VR no longer needs its own cliente select
     new bootstrap.Modal(document.getElementById('posVentaRapidaModal')).show();
   });
   document.getElementById('btnRealizarVentaRapidaPOS')?.addEventListener('click', realizarVentaRapida);
@@ -89,11 +89,9 @@ function bindEvents() {
     });
   }
 
-  document.querySelectorAll('input[name="precioSel"]').forEach(r => {
-    r.addEventListener('change', () => {
-      actualizarPreciosCart();
-      recalcularTotales();
-    });
+  document.getElementById('precioSelector')?.addEventListener('change', () => {
+    actualizarPreciosCart();
+    recalcularTotales();
   });
 }
 
@@ -125,6 +123,27 @@ async function mostrarSelectorCaja() {
         entrarBtn.disabled = true;
       }
     });
+
+    const lastCajaId = localStorage.getItem('lastCajaId');
+    const lastSucursalId = localStorage.getItem('lastSucursalId');
+
+    if (lastSucursalId) {
+      selSuc.value = lastSucursalId;
+      selSuc.dispatchEvent(new Event('change'));
+
+      // Wait briefly for cajas to load, then auto-select
+      setTimeout(() => {
+        const cajaSel = document.getElementById('posCajaSelect');
+        if (lastCajaId && cajaSel) {
+          const opt = cajaSel.querySelector(`option[value="${lastCajaId}"]`);
+          if (opt) {
+            cajaSel.value = lastCajaId;
+            document.getElementById('btnEntrarCaja').disabled = false;
+          }
+        }
+      }, 300);
+    }
+
     document.getElementById('posCajaSelect').addEventListener('change', () => {
       const id = parseInt(document.getElementById('posCajaSelect').value);
       document.getElementById('btnEntrarCaja').disabled = !id;
@@ -145,6 +164,8 @@ async function entrarCaja() {
       state.caja = await API.get('/cajas/' + id);
       Utils.showToast('Caja abierta exitosamente', 'success');
     }
+    localStorage.setItem('lastCajaId', id);
+    localStorage.setItem('lastSucursalId', state.caja.idSucursal || '');
     iniciarPOS();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
@@ -220,7 +241,7 @@ function cargarRegimenes(selectId) {
 }
 
 function actualizarPreciosCart() {
-  const precioIdx = parseInt(document.querySelector('input[name="precioSel"]:checked')?.value) || 1;
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
   const precioKey = 'precio' + precioIdx;
   state.cart.forEach(d => {
     const p = state.productos.find(x => x.idProducto === d.idProducto);
@@ -296,7 +317,7 @@ function agregarAlCart(prodId) {
   const p = state.productos.find(x => x.idProducto === prodId);
   if (!p) return;
 
-  const precioIdx = parseInt(document.querySelector('input[name="precioSel"]:checked')?.value) || 1;
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
   const precioKey = 'precio' + precioIdx;
   const precio = p[precioKey] || 0;
 
@@ -391,7 +412,7 @@ function renderCart() {
 }
 
 function recalcularTotales() {
-  const precioIdx = parseInt(document.querySelector('input[name="precioSel"]:checked')?.value) || 1;
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
   let subtotal = 0;
   let descuento = 0;
 
@@ -403,6 +424,10 @@ function recalcularTotales() {
       d.subtotal = d.cantidad * d.precioUnitario;
       subtotal += d.subtotal;
       descuento += (precio1 - precioActual) * d.cantidad;
+    } else {
+      // VR items (temp negative IDs) always contribute to subtotal
+      d.subtotal = d.cantidad * d.precioUnitario;
+      subtotal += d.subtotal;
     }
   });
 
@@ -425,7 +450,7 @@ async function cobrarVenta() {
 
   const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
   const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
-  const precioIdx = parseInt(document.querySelector('input[name="precioSel"]:checked')?.value) || 1;
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
   const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
   const clienteId = parseInt(document.getElementById('posCliente').value) || null;
 
@@ -471,7 +496,7 @@ async function ponerEnEspera() {
   if (state.cart.length === 0 || !state.caja) return;
   const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
   const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
-  const precioIdx = parseInt(document.querySelector('input[name="precioSel"]:checked')?.value) || 1;
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
   const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
   const clienteId = parseInt(document.getElementById('posCliente').value) || null;
 
@@ -605,6 +630,8 @@ async function realizarCorte() {
     await API.post('/cajas/' + state.caja.idCaja + '/corte', {});
     Utils.showToast('Corte realizado', 'success');
     bootstrap.Modal.getInstance(document.getElementById('posCorteModal'))?.hide();
+    localStorage.removeItem('lastCajaId');
+    localStorage.removeItem('lastSucursalId');
     state.caja = null;
     mostrarSelectorCaja();
   } catch (err) { Utils.showToast(err.message, 'error'); }
@@ -781,7 +808,7 @@ async function realizarVentaRapida() {
   if (!desc) { Utils.showToast('Descripci\u00f3n requerida', 'warning'); return; }
   if (!precioVenta || precioVenta <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
 
-  const tempId = -Date.now();
+  const tempId = -999999999 + state.cart.length; // negative ID within int range
   state.cart.push({
     idProducto: tempId,
     nombre: desc,
@@ -806,6 +833,8 @@ async function abandonarCaja() {
       'Tienes productos en el carrito. \u00bfAbandonar de todas formas?');
     if (!ok) return;
   }
+  localStorage.removeItem('lastCajaId');
+  localStorage.removeItem('lastSucursalId');
   state.cart = [];
   state.caja = null;
   state.reanudandoVentaId = null;
@@ -821,6 +850,17 @@ function abrirClienteModal() {
 }
 
 async function guardarClienteDesdePOS() {
+  function buildDireccionPOS() {
+    const calle = document.getElementById('posClienteCalle')?.value?.trim() || '';
+    const numExt = document.getElementById('posClienteNumExt')?.value?.trim() || '';
+    const numInt = document.getElementById('posClienteNumInt')?.value?.trim() || '';
+    const parts = [];
+    if (calle) parts.push(calle);
+    if (numExt) parts.push('Ext. ' + numExt);
+    if (numInt) parts.push('Int. ' + numInt);
+    return parts.join(', ');
+  }
+
   const data = {
     nombre: document.getElementById('posClienteNombre').value.trim(),
     apellidoPaterno: document.getElementById('posClienteApaterno').value.trim(),
@@ -830,6 +870,8 @@ async function guardarClienteDesdePOS() {
     whatsapp: document.getElementById('posClienteWhatsapp').value.trim(),
     empresa: document.getElementById('posClienteEmpresa').value.trim(),
     regimenFiscal: document.getElementById('posClienteRegimen').value,
+    cp: document.getElementById('posClienteCp')?.value?.trim() || null,
+    direccion: buildDireccionPOS() || null,
   };
 
   if (!data.nombre) { Utils.showToast('Nombre requerido', 'warning'); return; }

@@ -5,6 +5,7 @@ let state = {
   pageSize: 20,
   filterFechaInicio: '',
   filterFechaFin: '',
+  filterTipo: '',
 };
 
 export function init() {
@@ -25,6 +26,12 @@ function bindEvents() {
     cargarMovimientos(0);
   });
 
+  document.getElementById('filterKardexTipo')?.addEventListener('change', e => {
+    state.filterTipo = e.target.value;
+    state.currentPage = 0;
+    cargarMovimientos(0);
+  });
+
   document.getElementById('btnExportarKardex')?.addEventListener('click', exportarCSV);
 }
 
@@ -36,6 +43,7 @@ async function cargarMovimientos(page) {
 
   if (state.filterFechaInicio) params.set('fechaInicio', state.filterFechaInicio + 'T00:00:00');
   if (state.filterFechaFin) params.set('fechaFin', state.filterFechaFin + 'T23:59:59');
+  if (state.filterTipo) params.set('tipo', state.filterTipo);
 
   try {
     const result = await API.get('/kardex/todo?' + params.toString());

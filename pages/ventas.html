@@ -28,30 +28,31 @@
   <div class="pos-layout">
     <div class="pos-left">
       <div class="pos-panel pos-panel-client">
-        <label class="form-label fw-semibold mb-1">Selecciona Cliente</label>
-        <div class="d-flex gap-2 align-items-center">
-          <div class="flex-grow-1" id="pos-cliente-wrapper">
-            <select class="form-select" id="posCliente">
-              <option value="">Cliente mostrador...</option>
-            </select>
+        <label class="form-label fw-semibold mb-1">Cliente y Precio</label>
+        <div class="row g-1 align-items-center">
+          <div class="col-6">
+            <div class="d-flex gap-1">
+              <div class="flex-grow-1" id="pos-cliente-wrapper">
+                <select class="form-select form-select-sm" id="posCliente">
+                  <option value="">Cliente mostrador...</option>
+                </select>
+              </div>
+              <button class="btn btn-outline-primary btn-sm ripple" id="btnNuevoClientePOS" title="Nuevo Cliente">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
           </div>
-          <button class="btn btn-outline-primary btn-sm ripple" id="btnNuevoClientePOS" title="Nuevo Cliente">
-            <i class="fas fa-plus"></i>
-          </button>
-        </div>
-      </div>
-
-      <div class="pos-panel pos-panel-precio">
-        <label class="form-label fw-semibold mb-1">Precio</label>
-        <div class="btn-group w-100" role="group" id="precioSelector">
-          <input type="radio" class="btn-check" name="precioSel" id="precio1" value="1" checked>
-          <label class="btn btn-outline-primary btn-sm" for="precio1">P1</label>
-          <input type="radio" class="btn-check" name="precioSel" id="precio2" value="2">
-          <label class="btn btn-outline-primary btn-sm" for="precio2">P2</label>
-          <input type="radio" class="btn-check" name="precioSel" id="precio3" value="3">
-          <label class="btn btn-outline-primary btn-sm" for="precio3">P3</label>
-          <input type="radio" class="btn-check" name="precioSel" id="precio4" value="4">
-          <label class="btn btn-outline-primary btn-sm" for="precio4">P4</label>
+          <div class="col-6">
+            <div class="d-flex gap-1 align-items-center">
+              <label class="form-label mb-0 text-nowrap" style="font-size:0.8rem">Precio:</label>
+              <select class="form-select form-select-sm" id="precioSelector">
+                <option value="1">P1</option>
+                <option value="2">P2</option>
+                <option value="3">P3</option>
+                <option value="4">P4</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -172,7 +173,7 @@
 </div>
 
 <div class="modal fade" id="posClienteModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0">
         <h5 class="modal-title fw-bold" id="posClienteModalTitle">Nuevo Cliente</h5>
@@ -212,6 +213,23 @@
             <div class="col-6">
               <label class="form-label">R&eacute;gimen Fiscal <span class="text-danger">*</span></label>
               <select class="form-select form-select-sm" id="posClienteRegimen"></select>
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-3">
+              <label class="form-label">C.P.</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteCp" maxlength="5" placeholder="12345">
+            </div>
+            <div class="col-5">
+              <label class="form-label">Calle</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteCalle" maxlength="200">
+            </div>
+            <div class="col-2">
+              <label class="form-label">N&uacute;m. Ext</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteNumExt" maxlength="20">
+            </div>
+            <div class="col-2">
+              <label class="form-label">N&uacute;m. Int</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteNumInt" maxlength="20">
             </div>
           </div>
         </form>
@@ -266,12 +284,7 @@
               <label class="form-label">Cantidad</label>
               <input type="number" class="form-control form-control-sm" id="posVrCantidad" min="1" value="1">
             </div>
-            <div class="col-6">
-              <label class="form-label">Cliente</label>
-              <select class="form-select form-select-sm" id="posVrCliente">
-                <option value="">Mostrador</option>
-              </select>
-            </div>
+            <div class="col-6"></div>
           </div>
         </form>
       </div>

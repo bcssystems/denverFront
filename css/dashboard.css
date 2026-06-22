@@ -310,3 +310,27 @@
 .page-content {
   animation: fadeInUp 0.35s ease;
 }
+
+.icon-hat {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.topbar-brand-icon .icon-hat {
+  width: 45px;
+  height: 45px;
+}
+.sidebar-brand-icon .icon-hat {
+  width: 36px;
+  height: 36px;
+}
+.welcome-icon .icon-hat {
+  width: 64px;
+  height: 64px;
+}
+.login-brand-icon .icon-hat,
+.login-form-icon .icon-hat {
+  width: 48px;
+  height: 48px;
+}
