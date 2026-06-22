@@ -67,6 +67,7 @@ function bindEvents() {
   });
   document.getElementById('btnRealizarVentaRapidaPOS')?.addEventListener('click', realizarVentaRapida);
   document.getElementById('btnAbandonarCaja')?.addEventListener('click', abandonarCaja);
+  document.getElementById('btnPromocionesPOS')?.addEventListener('click', abrirPromocionesModal);
 
   document.getElementById('btnVerInventario')?.addEventListener('click', () => {
     const input = document.getElementById('posProductSearch');
@@ -1327,4 +1328,192 @@ async function guardarClienteDesdePOS() {
     bootstrap.Modal.getInstance(document.getElementById('posClienteModal'))?.hide();
     await cargarClientesSelect('posCliente');
   } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+// --- Promociones y Combos POS Integration ---
+
+async function abrirPromocionesModal() {
+  new bootstrap.Modal(document.getElementById('posPromocionModal')).show();
+  await Promise.all([cargarPromosActivas(), cargarCombosActivos()]);
+}
+
+async function cargarPromosActivas() {
+  const container = document.getElementById('posPromosContainer');
+  if (!container) return;
+  try {
+    const promos = await API.get('/promociones/activas');
+    const filtered = promos.filter(p => p.tipo === 'PROMOCION');
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-percent fa-2x mb-2"></i><p>No hay promociones activas</p></div>';
+      return;
+    }
+    container.innerHTML = filtered.map(p => `
+      <div class="col-md-6">
+        <div class="card card-sm border-primary promo-card" data-id="${p.idPromocion}" data-tipo="PROMOCION" style="cursor:pointer">
+          <div class="card-body p-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold small">${Utils.esc(p.nombre)}</div>
+                <small class="text-muted">${p.productoNombre ? Utils.esc(p.productoNombre) : ''}</small>
+              </div>
+              <div class="text-end">
+                <div class="badge bg-danger">-${p.descuentoPorcentaje}%</div>
+                <div class="fw-bold mt-1" style="color:var(--primary)">$${(p.precioFinal || 0).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    container.querySelectorAll('.promo-card').forEach(card => {
+      card.addEventListener('click', () => aplicarPromocion(parseInt(card.dataset.id)));
+    });
+  } catch (_) {
+    container.innerHTML = '<div class="text-center py-4 text-danger">Error al cargar promociones</div>';
+  }
+}
+
+async function cargarCombosActivos() {
+  const container = document.getElementById('posCombosContainer');
+  if (!container) return;
+  try {
+    const combos = await API.get('/promociones/activas');
+    const filtered = combos.filter(c => c.tipo === 'COMBO');
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-boxes fa-2x mb-2"></i><p>No hay combos activos</p></div>';
+      return;
+    }
+    container.innerHTML = filtered.map(c => `
+      <div class="col-md-6">
+        <div class="card card-sm border-info combo-card" data-id="${c.idPromocion}" data-tipo="COMBO" style="cursor:pointer">
+          <div class="card-body p-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold small">${Utils.esc(c.nombre)}</div>
+                <small class="text-muted">${(c.detalles || []).length} producto(s)</small>
+              </div>
+              <div class="text-end">
+                <div class="badge bg-info">-${c.descuentoPorcentaje}%</div>
+                <div class="fw-bold mt-1" style="color:var(--primary)">$${(c.precioFinal || 0).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    container.querySelectorAll('.combo-card').forEach(card => {
+      card.addEventListener('click', () => aplicarCombo(parseInt(card.dataset.id)));
+    });
+  } catch (_) {
+    container.innerHTML = '<div class="text-center py-4 text-danger">Error al cargar combos</div>';
+  }
+}
+
+async function aplicarPromocion(promoId) {
+  try {
+    const promo = await API.get('/promociones/' + promoId);
+    if (!promo.idProducto) {
+      Utils.showToast('La promoci\u00f3n no tiene producto asignado', 'warning');
+      return;
+    }
+
+    const productExists = state.productos.find(p => p.idProducto === promo.idProducto);
+    if (!productExists) {
+      const data = await API.get('/productos?search=&activo=true&page=0&size=500');
+      state.productos = data.content || [];
+    }
+
+    const prod = state.productos.find(p => p.idProducto === promo.idProducto);
+    if (!prod) {
+      Utils.showToast('Producto no encontrado en el inventario', 'warning');
+      return;
+    }
+
+    if (getStockSucursal(prod) <= 0) {
+      Utils.showToast('Producto sin stock en esta sucursal', 'warning');
+      return;
+    }
+
+    const idx = state.cart.findIndex(d => d.idProducto === promo.idProducto);
+    if (idx >= 0) {
+      const stockSuc = getStockSucursal(prod);
+      if (state.cart[idx].cantidad >= stockSuc) {
+        Utils.showToast('Stock insuficiente', 'warning');
+        return;
+      }
+      state.cart[idx].cantidad++;
+    } else {
+      state.cart.push({
+        idProducto: promo.idProducto,
+        nombre: prod.nombre,
+        sku: prod.sku,
+        cantidad: 1,
+        precioUnitario: promo.precioFinal || 0,
+        stockActual: getStockSucursal(prod),
+        _promoNombre: promo.nombre,
+        _promoId: promoId,
+      });
+    }
+
+    renderCart();
+    Utils.showToast('Promoci\u00f3n aplicada: ' + promo.nombre, 'success');
+    bootstrap.Modal.getInstance(document.getElementById('posPromocionModal'))?.hide();
+  } catch (err) {
+    Utils.showToast(err.message, 'error');
+  }
+}
+
+async function aplicarCombo(comboId) {
+  try {
+    const combo = await API.get('/promociones/' + comboId);
+    const detalles = combo.detalles || [];
+    if (detalles.length === 0) {
+      Utils.showToast('El combo no tiene productos', 'warning');
+      return;
+    }
+
+    const data = await API.get('/productos?activo=true&page=0&size=500');
+    const allProductos = data.content || [];
+    const desc = combo.descuentoPorcentaje || 0;
+
+    let skipped = 0;
+    for (const det of detalles) {
+      const prod = allProductos.find(p => p.idProducto === det.idProducto);
+      if (!prod) { skipped++; continue; }
+
+      const unitPrice = (prod.precio1 || 0) * (1 - desc / 100);
+      const stockSuc = state.caja?.idSucursal
+        ? (prod.inventarioSucursales || []).find(i => i.idSucursal === state.caja.idSucursal)?.stock || 0
+        : prod.stockActual || 0;
+
+      if (stockSuc < det.cantidad) { skipped++; continue; }
+
+      const existing = state.cart.find(d => d.idProducto === det.idProducto);
+      if (existing) {
+        existing.cantidad += det.cantidad;
+      } else {
+        state.cart.push({
+          idProducto: det.idProducto,
+          nombre: prod.nombre,
+          sku: prod.sku,
+          cantidad: det.cantidad,
+          precioUnitario: unitPrice,
+          stockActual: stockSuc,
+          _comboNombre: combo.nombre,
+          _comboId: comboId,
+        });
+      }
+    }
+
+    if (skipped === detalles.length) {
+      Utils.showToast('No se pudo agregar ning\u00fan producto del combo (sin stock)', 'warning');
+      return;
+    }
+
+    renderCart();
+    Utils.showToast('Combo aplicado: ' + combo.nombre + (skipped > 0 ? ' (' + skipped + ' producto(s) sin stock omitidos)' : ''), 'success');
+    bootstrap.Modal.getInstance(document.getElementById('posPromocionModal'))?.hide();
+  } catch (err) {
+    Utils.showToast(err.message, 'error');
+  }
 }

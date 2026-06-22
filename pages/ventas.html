@@ -160,6 +160,9 @@
           <button class="btn btn-outline-danger btn-sm ripple" id="btnCancelarVentaPOS">
             <i class="fas fa-ban me-1"></i> Cancelar Venta
           </button>
+          <button class="btn btn-outline-info btn-sm ripple" id="btnPromocionesPOS">
+            <i class="fas fa-percent me-1"></i> Promociones
+          </button>
           <button class="btn btn-outline-secondary btn-sm ripple" id="btnVentaRapidaPOS">
             <i class="fas fa-bolt me-1"></i> Venta R&aacute;pida
           </button>
@@ -461,6 +464,38 @@
       </div>
     </div>
   </div>
+
+  <div class="modal fade" id="posPromocionModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="fas fa-percent me-1"></i> Promociones y Combos</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs mb-3" id="promoTab">
+          <li class="nav-item"><a class="nav-link active" id="tabPromos" data-bs-toggle="tab" href="#promosList">Promociones</a></li>
+          <li class="nav-item"><a class="nav-link" id="tabCombos" data-bs-toggle="tab" href="#combosList">Combos</a></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="promosList">
+            <div id="posPromosContainer" class="row g-2" style="max-height:350px;overflow-y:auto">
+              <div class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="combosList">
+            <div id="posCombosContainer" class="row g-2" style="max-height:350px;overflow-y:auto">
+              <div class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
   <div class="modal fade" id="posCancelarModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
