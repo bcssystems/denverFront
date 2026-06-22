@@ -11,6 +11,7 @@ let state = {
   esperaVentas: [],
   cancelarVentas: [],
   cancelarSelectedId: null,
+  lastCortePreview: null,
 };
 
 const REGIMENES_FISCALES = [
@@ -39,6 +40,7 @@ function bindEvents() {
   document.getElementById('btnEntrarCaja')?.addEventListener('click', entrarCaja);
 
   document.getElementById('btnCobrarPOS')?.addEventListener('click', cobrarVenta);
+  document.getElementById('btnConfirmarCobroPOS')?.addEventListener('click', confirmarCobro);
   document.getElementById('btnEsperaPOS')?.addEventListener('click', ponerEnEspera);
   document.getElementById('btnNuevoClientePOS')?.addEventListener('click', () => abrirClienteModal());
   document.getElementById('btnGuardarPosCliente')?.addEventListener('click', guardarClienteDesdePOS);
@@ -448,18 +450,132 @@ async function cobrarVenta() {
   if (!state.caja) { Utils.showToast('No hay caja activa', 'error'); return; }
   if (state.cart.length === 0) { Utils.showToast('Agrega productos a la venta', 'warning'); return; }
 
-  const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
-  const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
-  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
-  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
-  const clienteId = parseInt(document.getElementById('posCliente').value) || null;
-
   for (const d of state.cart) {
     const p = state.productos.find(x => x.idProducto === d.idProducto);
     if (p && getStockSucursal(p) < d.cantidad) {
       Utils.showToast('Stock insuficiente en esta sucursal: ' + d.nombre, 'error');
       return;
     }
+  }
+
+  const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
+  document.getElementById('posCobroTotal').textContent = '$' + total.toFixed(2);
+  document.getElementById('posCobroNota').value = '';
+  await cargarFormasPagoCobro();
+  new bootstrap.Modal(document.getElementById('posCobroModal')).show();
+}
+
+async function cargarFormasPagoCobro() {
+  const container = document.getElementById('posCobroPagos');
+  container.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando formas de pago...</div>';
+
+  try {
+    const tipos = await API.get('/tipos-pago');
+    const total = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
+
+    if (!tipos || tipos.length === 0) {
+      container.innerHTML = '<div class="text-center py-3 text-muted">No hay formas de pago configuradas</div>';
+      return;
+    }
+
+    container.innerHTML = tipos.map((t, i) => {
+      const isEfectivo = t.nombre.toUpperCase() === 'EFECTIVO';
+      const checked = i === 0 ? 'checked' : '';
+      return `<div class="payment-row border rounded p-2 mb-1">
+        <div class="row g-2 align-items-center">
+          <div class="col-3">
+            <div class="form-check">
+              <input class="form-check-input payment-radio" type="radio" name="cobroPagoRadio" value="${t.idTipoPago}" data-nombre="${Utils.esc(t.nombre)}" ${checked}>
+              <label class="form-check-label fw-semibold small">${Utils.esc(t.nombre)}</label>
+            </div>
+          </div>
+          <div class="col-3">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control payment-monto" data-id="${t.idTipoPago}" step="0.01" min="0" value="${i === 0 ? total.toFixed(2) : '0.00'}">
+            </div>
+          </div>
+          <div class="col-6">
+            <input type="text" class="form-control form-control-sm payment-referencia" data-id="${t.idTipoPago}" placeholder="${isEfectivo ? '' : 'Referencia (ej. últimos 4 dígitos)'}" ${isEfectivo ? 'disabled' : ''}>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.addEventListener('input', recalcularSumaCobro);
+
+    container.querySelectorAll('.payment-radio').forEach(r => {
+      r.addEventListener('change', () => {
+        const id = parseInt(r.value);
+        const totalVal = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
+        container.querySelectorAll('.payment-monto').forEach(inp => {
+          inp.value = parseInt(inp.dataset.id) === id ? totalVal.toFixed(2) : '0.00';
+        });
+        recalcularSumaCobro();
+      });
+    });
+
+    recalcularSumaCobro();
+  } catch (err) {
+    container.innerHTML = '<div class="text-center py-3 text-danger">Error al cargar formas de pago</div>';
+  }
+}
+
+function recalcularSumaCobro() {
+  let suma = 0;
+  document.querySelectorAll('.payment-monto').forEach(inp => {
+    suma += parseFloat(inp.value) || 0;
+  });
+  const total = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
+  const el = document.getElementById('posCobroSuma');
+  const cambioEl = document.getElementById('posCobroCambio');
+  const cambioVal = document.getElementById('posCobroCambioValor');
+  el.textContent = '$' + suma.toFixed(2);
+
+  if (suma + 0.01 < total) {
+    el.style.color = 'var(--danger)';
+    cambioEl.classList.add('d-none');
+  } else {
+    el.style.color = 'var(--success)';
+    if (suma > total + 0.01) {
+      cambioVal.textContent = '$' + (suma - total).toFixed(2);
+      cambioEl.classList.remove('d-none');
+    } else {
+      cambioEl.classList.add('d-none');
+    }
+  }
+}
+
+async function confirmarCobro() {
+  if (!state.caja) { Utils.showToast('No hay caja activa', 'error'); return; }
+
+  const total = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
+  const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
+  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
+  const clienteId = parseInt(document.getElementById('posCliente').value) || null;
+  const nota = document.getElementById('posCobroNota').value.trim() || null;
+
+  const pagos = [];
+  document.querySelectorAll('.payment-monto').forEach(inp => {
+    const monto = parseFloat(inp.value) || 0;
+    if (monto > 0) {
+      const idTipoPago = parseInt(inp.dataset.id);
+      const refInput = document.querySelector(`.payment-referencia[data-id="${idTipoPago}"]`);
+      const referencia = refInput ? refInput.value.trim() || null : null;
+      pagos.push({ idTipoPago, monto, referencia });
+    }
+  });
+
+  if (pagos.length === 0) {
+    Utils.showToast('Selecciona al menos una forma de pago', 'warning');
+    return;
+  }
+
+  const sumaPagos = pagos.reduce((s, p) => s + p.monto, 0);
+  if (sumaPagos + 0.01 < total) {
+    Utils.showToast('La suma de los pagos debe ser al menos igual al total', 'warning');
+    return;
   }
 
   const request = {
@@ -470,6 +586,7 @@ async function cobrarVenta() {
     subtotal: subtotal,
     descuento: subtotal - total,
     total: total,
+    nota: nota,
     detalles: state.cart.map(d => ({
       idProducto: d.idProducto,
       descripcion: null,
@@ -477,6 +594,7 @@ async function cobrarVenta() {
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
     })),
+    pagos: pagos,
   };
 
   try {
@@ -484,12 +602,188 @@ async function cobrarVenta() {
       await API.post('/ventas/' + state.reanudandoVentaId + '/cancelar', {});
       state.reanudandoVentaId = null;
     }
-    await API.post('/ventas', request);
+    const ventaCreada = await API.post('/ventas', request);
     Utils.showToast('Venta registrada exitosamente', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('posCobroModal'))?.hide();
     limpiarCart();
     await refreshCaja();
     await cargarEsperas();
+    imprimirTicketVenta(ventaCreada);
   } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function imprimirTicketVenta(venta) {
+  const now = new Date();
+  const fechaStr = now.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+  const horaStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+  const detalleRows = (venta.detalles || []).map(d => `
+    <tr>
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px">${Utils.esc(d.productoNombre || d.descripcion || 'Producto')}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:center">${d.cantidad}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:right">$${(d.precioUnitario || 0).toFixed(2)}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:right">$${(d.subtotal || 0).toFixed(2)}</td>
+    </tr>`).join('');
+
+  const pagoRows = (venta.pagos || []).map(p => `
+    <tr>
+      <td style="padding:3px 8px;font-size:11px">${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
+      <td style="padding:3px 8px;font-size:11px;text-align:right">$${(p.monto || 0).toFixed(2)}</td>
+    </tr>`).join('');
+
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  printWindow.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticket - Venta #${venta.idVenta}</title>
+  <style>
+    @page { size: letter; margin: 0.5in; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; padding: 20px; }
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: #8B4513; margin-bottom: 2px; }
+    .header .sub { font-size: 10px; color: #666; }
+    .divider { border-top: 1px dashed #000; margin: 8px 0; }
+    .info-table { width: 100%; font-size: 11px; margin-bottom: 8px; }
+    .info-table td { padding: 2px 4px; }
+    .info-table td:last-child { text-align: right; }
+    table.detalles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    table.detalles th { font-size: 10px; text-align: left; padding: 4px 8px; border-bottom: 2px solid #000; text-transform: uppercase; }
+    table.detalles th.right { text-align: right; }
+    table.detalles th.center { text-align: center; }
+    .totals { width: 100%; font-size: 12px; margin-top: 4px; }
+    .totals td { padding: 3px 8px; }
+    .totals td:last-child { text-align: right; }
+    .totals .grand-total td { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 6px; }
+    .nota { margin-top: 8px; padding: 8px; background: #f9f9f9; font-size: 11px; border-left: 3px solid #8B4513; }
+    .footer { text-align: center; margin-top: 16px; font-size: 10px; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>DENVER HATS</h1>
+    <div class="sub">Sistema de Administraci\u00f3n Intranet</div>
+  </div>
+  <div class="divider"></div>
+  <table class="info-table">
+    <tr><td><strong>Ticket #</strong></td><td>${venta.idVenta}</td></tr>
+    <tr><td><strong>Fecha</strong></td><td>${fechaStr}</td></tr>
+    <tr><td><strong>Hora</strong></td><td>${horaStr}</td></tr>
+    <tr><td><strong>Caja</strong></td><td>${Utils.esc(venta.cajaNombre || state.caja?.nombre || '')}</td></tr>
+    <tr><td><strong>Sucursal</strong></td><td>${Utils.esc(venta.sucursalNombre || state.caja?.sucursalNombre || '')}</td></tr>
+    <tr><td><strong>Cliente</strong></td><td>${Utils.esc(venta.clienteNombre || 'Mostrador')}</td></tr>
+    <tr><td><strong>Atendi\u00f3</strong></td><td>${Utils.esc(venta.usuario || '')}</td></tr>
+    <tr><td><strong>Tipo</strong></td><td>${venta.tipoVenta || 'CONTADO'}</td></tr>
+  </table>
+  <div class="divider"></div>
+  <table class="detalles">
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th class="center">Cant</th>
+        <th class="right">Precio</th>
+        <th class="right">Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${detalleRows}
+    </tbody>
+  </table>
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td>Subtotal</td><td>$${(venta.subtotal || 0).toFixed(2)}</td></tr>
+    <tr><td>Descuento</td><td>-$${(venta.descuento || 0).toFixed(2)}</td></tr>
+    <tr class="grand-total"><td><strong>TOTAL</strong></td><td><strong>$${(venta.total || 0).toFixed(2)}</strong></td></tr>
+  </table>
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td colspan="2" style="font-weight:bold;font-size:11px">Desglose de Pagos</td></tr>
+    ${pagoRows}
+  </table>
+  ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
+  <div class="footer">
+    <p>¡Gracias por su compra!</p>
+    <p>${fechaStr} ${horaStr}</p>
+  </div>
+</body>
+</html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { printWindow.print(); }, 300);
+}
+
+function imprimirTicketCorte(corte) {
+  const now = new Date();
+  const fechaStr = now.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+  const horaStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  printWindow.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Corte de Caja #${corte.idCorte || ''}</title>
+  <style>
+    @page { size: letter; margin: 0.5in; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; padding: 20px; }
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: #8B4513; margin-bottom: 2px; }
+    .header .sub { font-size: 10px; color: #666; }
+    .divider { border-top: 1px dashed #000; margin: 8px 0; }
+    .info-table { width: 100%; font-size: 11px; margin-bottom: 8px; }
+    .info-table td { padding: 2px 4px; }
+    .info-table td:last-child { text-align: right; }
+    .section-title { font-size: 13px; font-weight: bold; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+    .data-table td:last-child { text-align: right; font-weight: 600; }
+    .data-table .total-row td { font-size: 14px; font-weight: bold; border-top: 2px solid #000; border-bottom: none; padding-top: 8px; }
+    .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>DENVER HATS</h1>
+    <div class="sub">Corte de Caja</div>
+  </div>
+  <div class="divider"></div>
+  <table class="info-table">
+    <tr><td><strong>Corte #</strong></td><td>${corte.idCorte || '-'}</td></tr>
+    <tr><td><strong>Fecha de Corte</strong></td><td>${fechaStr}</td></tr>
+    <tr><td><strong>Hora</strong></td><td>${horaStr}</td></tr>
+    <tr><td><strong>Caja</strong></td><td>${Utils.esc(corte.cajaNombre || '')}</td></tr>
+    <tr><td><strong>Sucursal</strong></td><td>${Utils.esc(corte.sucursalNombre || '')}</td></tr>
+    <tr><td><strong>Usuario</strong></td><td>${Utils.esc(corte.usuario || '')}</td></tr>
+    <tr><td><strong>Apertura</strong></td><td>${corte.fechaApertura ? new Date(corte.fechaApertura).toLocaleString('es-MX') : '-'}</td></tr>
+    <tr><td><strong>Cierre</strong></td><td>${corte.fechaCierre ? new Date(corte.fechaCierre).toLocaleString('es-MX') : now.toLocaleString('es-MX')}</td></tr>
+  </table>
+  <div class="divider"></div>
+  <div class="section-title">Resumen del Corte</div>
+  <table class="data-table">
+    <tr><td>Saldo Inicial</td><td>$${(corte.saldoInicial || 0).toFixed(2)}</td></tr>
+    <tr><td>Total Ventas</td><td>$${(corte.totalVentas || 0).toFixed(2)}</td></tr>
+    <tr><td style="padding-left:20px">Ventas Contado</td><td>$${(corte.totalVentasContado || 0).toFixed(2)}</td></tr>
+    <tr><td style="padding-left:20px">Ventas Cr\u00e9dito</td><td>$${(corte.totalVentasCredito || 0).toFixed(2)}</td></tr>
+    <tr><td>Total Ingresos</td><td style="color:#059669">+$${(corte.totalIngresos || 0).toFixed(2)}</td></tr>
+    <tr><td>Total Egresos</td><td style="color:#dc2626">-$${(corte.totalEgresos || 0).toFixed(2)}</td></tr>
+    <tr class="total-row"><td>Saldo Final</td><td>$${(corte.saldoFinalContado || 0).toFixed(2)}</td></tr>
+  </table>
+  ${corte.saldoEsperado != null ? `
+  <div class="divider"></div>
+  <table class="data-table">
+    <tr><td>Saldo Esperado en Caja</td><td>$${corte.saldoEsperado.toFixed(2)}</td></tr>
+  </table>` : ''}
+  <div class="footer">
+    <p>--- Fin del Corte ---</p>
+    <p>${fechaStr} ${horaStr}</p>
+  </div>
+</body>
+</html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { printWindow.print(); }, 300);
 }
 
 async function ponerEnEspera() {
@@ -508,6 +802,7 @@ async function ponerEnEspera() {
     subtotal: subtotal,
     descuento: subtotal - total,
     total: total,
+    nota: null,
     detalles: state.cart.map(d => ({
       idProducto: d.idProducto,
       descripcion: null,
@@ -515,6 +810,7 @@ async function ponerEnEspera() {
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
     })),
+    pagos: null,
   };
 
   try {
@@ -577,6 +873,7 @@ async function previewCorte() {
   if (!state.caja) return;
   try {
     const corte = await API.get('/cajas/' + state.caja.idCaja + '/corte-preview');
+    state.lastCortePreview = corte;
     const body = document.getElementById('posCorteBody');
     body.innerHTML = `
       <div class="row g-3">
@@ -627,9 +924,11 @@ async function realizarCorte() {
     if (!ok) return;
   }
   try {
-    await API.post('/cajas/' + state.caja.idCaja + '/corte', {});
+    const corteCreado = await API.post('/cajas/' + state.caja.idCaja + '/corte', {});
     Utils.showToast('Corte realizado', 'success');
     bootstrap.Modal.getInstance(document.getElementById('posCorteModal'))?.hide();
+    const cortePrint = corteCreado || state.lastCortePreview;
+    if (cortePrint) imprimirTicketCorte(cortePrint);
     localStorage.removeItem('lastCajaId');
     localStorage.removeItem('lastSucursalId');
     state.caja = null;

@@ -172,6 +172,40 @@
   </div>
 </div>
 
+<div class="modal fade" id="posCobroModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold">Cobrar Venta</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center mb-3">
+          <small class="text-muted">Total a cobrar</small>
+          <h3 class="fw-bold" style="color:var(--primary)" id="posCobroTotal">$0.00</h3>
+        </div>
+        <div id="posCobroPagos">
+          <div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando formas de pago...</div>
+        </div>
+        <div class="mt-2">
+          <label class="form-label small">Nota (opcional)</label>
+          <textarea class="form-control form-control-sm" id="posCobroNota" rows="2" maxlength="500" placeholder="Nota interna para esta venta"></textarea>
+        </div>
+        <div class="mt-2 text-end pequeno" id="posCobroSumaMsg">
+          Suma: <strong id="posCobroSuma">$0.00</strong>
+          <span id="posCobroCambio" class="d-none ms-2"><strong class="text-info">Cambio: <span id="posCobroCambioValor">$0.00</span></strong></span>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success px-4 ripple" id="btnConfirmarCobroPOS">
+          <i class="fas fa-check me-1"></i> Cobrar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="posClienteModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
