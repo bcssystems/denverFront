@@ -34,6 +34,9 @@ function bindEvents() {
       cargarClientes(0);
     }, 400));
   }
+  document.getElementById('clienteTieneCredito')?.addEventListener('change', function() {
+    toggleLimiteCreditoGroup(this.checked);
+  });
   document.getElementById('clienteCp')?.addEventListener('input', Utils.debounce(function() {
     const cp = this.value.trim();
     if (cp.length === 5) {
@@ -79,7 +82,7 @@ function renderTable() {
   if (!tbody) return;
 
   if (!state.data || state.data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-address-book"></i><p>No hay clientes</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><i class="fas fa-address-book"></i><p>No hay clientes</p></div></td></tr>';
     return;
   }
 
@@ -89,7 +92,9 @@ function renderTable() {
     <td>${Utils.esc(c.telefono) || '-'}</td>
     <td>${Utils.esc(c.codigoPais) || '-'}</td>
     <td>${Utils.esc(c.regimenFiscal) || '-'}</td>
-    <td style="max-width:200px;white-space:normal">${Utils.esc(c.direccion || '')}${c.cp ? ' (CP: ' + c.cp + ')' : ''}</td>
+    <td style="max-width:160px;white-space:normal">${Utils.esc(c.direccion || '')}${c.cp ? ' (CP: ' + c.cp + ')' : ''}</td>
+    <td class="text-center">${c.tieneCredito ? '<span class="badge bg-info"><i class="fas fa-check"></i></span>' : '<span class="text-muted">-</span>'}</td>
+    <td class="text-end">${c.saldoActual != null ? '$' + c.saldoActual.toFixed(2) : '-'}</td>
     <td class="acciones-cell">
       <button class="btn-action btn-action-edit" data-id="${c.idCliente}" title="Editar"><i class="fas fa-edit"></i></button>
       <button class="btn-action btn-action-delete" data-id="${c.idCliente}" title="Eliminar"><i class="fas fa-trash"></i></button>
@@ -161,12 +166,25 @@ function abrirModal(id) {
       if (c.cp) {
         cargarColonias(c.cp, c.colonia || '');
       }
+      document.getElementById('clienteTieneCredito').checked = c.tieneCredito || false;
+      document.getElementById('clienteLimiteCredito').value = c.limiteCredito || '';
+      toggleLimiteCreditoGroup(c.tieneCredito || false);
+    } else {
+      document.getElementById('clienteTieneCredito').checked = false;
+      document.getElementById('clienteLimiteCredito').value = '';
+      toggleLimiteCreditoGroup(false);
     }
   }
   modal.show();
 }
 
+function toggleLimiteCreditoGroup(show) {
+  const group = document.getElementById('clienteLimiteCreditoGroup');
+  if (group) group.style.display = show ? 'block' : 'none';
+}
+
 async function guardarCliente() {
+  const tieneCredito = document.getElementById('clienteTieneCredito').checked;
   const data = {
     nombre: document.getElementById('clienteNombre').value.trim(),
     apellidoPaterno: document.getElementById('clienteApaterno').value.trim(),
@@ -178,6 +196,8 @@ async function guardarCliente() {
     regimenFiscal: document.getElementById('clienteRegimen').value,
     cp: document.getElementById('clienteCp').value.trim() || null,
     direccion: buildDireccionString(),
+    tieneCredito: tieneCredito,
+    limiteCredito: tieneCredito ? (parseFloat(document.getElementById('clienteLimiteCredito').value) || 0) : 0,
   };
 
   if (!data.nombre) { Utils.showToast('El nombre es obligatorio', 'warning'); return; }

@@ -503,25 +503,54 @@ function abrirModalMovimiento() {
 
   document.getElementById('movimientoProductoId').value = state.currentProductoId || '';
   document.getElementById('movimientoForm').reset();
+  document.getElementById('movimientoTransferenciaGroup').classList.add('d-none');
+  document.getElementById('movimientoSucursalGroup').classList.remove('d-none');
+
+  cargarSucursalesTransferencia();
+
+  document.getElementById('movimientoTipo').onchange = function() {
+    const isTransfer = this.value === 'TRANSFERENCIA';
+    document.getElementById('movimientoSucursalGroup').classList.toggle('d-none', isTransfer);
+    document.getElementById('movimientoTransferenciaGroup').classList.toggle('d-none', !isTransfer);
+  };
+
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 
   document.getElementById('btnGuardarMovimiento').onclick = async () => {
-    const data = {
-      tipoMovimiento: document.getElementById('movimientoTipo').value,
-      cantidad: parseInt(document.getElementById('movimientoCantidad').value) || 0,
-      idSucursal: parseInt(document.getElementById('movimientoSucursal').value) || null,
-      referencia: document.getElementById('movimientoReferencia').value.trim(),
-      observacion: document.getElementById('movimientoObservacion').value.trim(),
-    };
+    const tipo = document.getElementById('movimientoTipo').value;
+    const cantidad = parseInt(document.getElementById('movimientoCantidad').value) || 0;
+    const referencia = document.getElementById('movimientoReferencia').value.trim();
+    const observacion = document.getElementById('movimientoObservacion').value.trim();
+    const idProducto = parseInt(document.getElementById('movimientoProductoId').value);
 
-    if (!data.cantidad || data.cantidad <= 0) {
+    if (!cantidad || cantidad <= 0) {
       Utils.showToast('La cantidad debe ser mayor a 0', 'warning');
       return;
     }
 
     try {
-      const idProducto = parseInt(document.getElementById('movimientoProductoId').value);
-      await API.post(`/productos/${idProducto}/movimiento-stock`, data);
+      if (tipo === 'TRANSFERENCIA') {
+        const idSucursalOrigen = parseInt(document.getElementById('movimientoSucursalOrigen').value);
+        const idSucursalDestino = parseInt(document.getElementById('movimientoSucursalDestino').value);
+        if (!idSucursalOrigen || !idSucursalDestino) {
+          Utils.showToast('Selecciona sucursal origen y destino', 'warning');
+          return;
+        }
+        if (idSucursalOrigen === idSucursalDestino) {
+          Utils.showToast('Las sucursales deben ser diferentes', 'warning');
+          return;
+        }
+        await API.post(`/productos/${idProducto}/transferir`, { idSucursalOrigen, idSucursalDestino, cantidad, referencia, observacion });
+      } else {
+        const data = {
+          tipoMovimiento: tipo,
+          cantidad: cantidad,
+          idSucursal: parseInt(document.getElementById('movimientoSucursal').value) || null,
+          referencia: referencia,
+          observacion: observacion,
+        };
+        await API.post(`/productos/${idProducto}/movimiento-stock`, data);
+      }
       Utils.showToast('Movimiento registrado', 'success');
       bootstrap.Modal.getInstance(modalEl).hide();
       if (state.currentProductoId) verMultimedia(state.currentProductoId);
@@ -530,4 +559,13 @@ function abrirModalMovimiento() {
       Utils.showToast(err.message, 'error');
     }
   };
+}
+
+async function cargarSucursalesTransferencia() {
+  try {
+    const sucursales = await API.get('/sucursales');
+    const opts = sucursales.map(s => `<option value="${s.idSucursal}">${Utils.esc(s.nombre)}</option>`).join('');
+    document.getElementById('movimientoSucursalOrigen').innerHTML = '<option value="">Seleccionar...</option>' + opts;
+    document.getElementById('movimientoSucursalDestino').innerHTML = '<option value="">Seleccionar...</option>' + opts;
+  } catch (_) {}
 }

@@ -70,6 +70,7 @@ function renderTable() {
     if (r.tipo === 'ENTRADA' || r.tipo === 'ENTRADA_STOCK') badgeClass = 'badge-active';
     else if (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_STOCK') badgeClass = 'badge-inactive';
     else if (r.tipo === 'AJUSTE' || r.tipo === 'AJUSTE_STOCK') badgeClass = 'badge bg-warning text-dark';
+    else if (r.tipo === 'TRANSFERENCIA' || r.tipo === 'TRANSFERENCIA_STOCK') badgeClass = 'badge bg-info text-white';
     else if (r.tipo === 'CREAR' || r.tipo === 'CREACION') badgeClass = 'badge bg-info text-white';
     else if (r.tipo === 'ACTUALIZAR' || r.tipo === 'ACTUALIZACION') badgeClass = 'badge bg-primary text-white';
     else if (r.tipo === 'ELIMINAR') badgeClass = 'badge bg-danger text-white';

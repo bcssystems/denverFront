@@ -24,11 +24,13 @@
             <th>Pa&iacute;s</th>
             <th>R&eacute;gimen Fiscal</th>
             <th>Direcci&oacute;n</th>
+            <th>Cr&eacute;dito</th>
+            <th>Saldo Actual</th>
             <th style="width:100px"></th>
           </tr>
         </thead>
         <tbody id="tableClientesBody">
-          <tr><td colspan="7"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
+          <tr><td colspan="9"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -110,6 +112,17 @@
             <div class="col-md-2">
               <label class="form-label">N&uacute;m. Interior</label>
               <input type="text" class="form-control" id="clienteNumInt" maxlength="20">
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-md-3">
+              <div class="form-check mt-2">
+                <input type="checkbox" class="form-check-input" id="clienteTieneCredito">
+                <label class="form-check-label" for="clienteTieneCredito">¿Tiene cr&eacute;dito?</label>
+              </div>
+            </div>
+            <div class="col-md-3" id="clienteLimiteCreditoGroup" style="display:none">
+              <label class="form-label">L&iacute;mite de Cr&eacute;dito</label>
+              <input type="number" class="form-control" id="clienteLimiteCredito" step="0.01" min="0">
             </div>
           </div>
         </form>

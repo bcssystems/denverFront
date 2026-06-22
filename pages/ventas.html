@@ -411,6 +411,57 @@
     </div>
   </div>
 
+  <div class="modal fade" id="posCreditoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold">Venta a Cr&eacute;dito</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="text-center mb-3">
+            <small class="text-muted">Total a financiar</small>
+            <h3 class="fw-bold" style="color:var(--primary)" id="posCreditoTotal">$0.00</h3>
+          </div>
+          <form id="formPosCredito">
+            <div class="mb-3">
+              <label class="form-label">Cliente <span class="text-danger">*</span></label>
+              <div class="fw-semibold small" id="posCreditoClienteName">-</div>
+            </div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Plazo (meses) <span class="text-danger">*</span></label>
+                <select class="form-select form-select-sm" id="posCreditoPlazo">
+                  <option value="1">1 mes</option>
+                  <option value="2">2 meses</option>
+                  <option value="3" selected>3 meses</option>
+                  <option value="4">4 meses</option>
+                  <option value="6">6 meses</option>
+                  <option value="12">12 meses</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Inter&eacute;s (%)</label>
+                <input type="number" class="form-control form-control-sm" id="posCreditoInteres" step="0.1" min="0" value="0">
+              </div>
+            </div>
+            <div class="mt-3 p-2 bg-light rounded">
+              <small class="text-muted">Total c/inter&eacute;s: <strong id="posCreditoMontoOriginal">$0.00</strong></small>
+              <br>
+              <small class="text-muted">Pago mensual: <strong id="posCreditoPagoMensual">$0.00</strong></small>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-info btn-sm px-4 ripple" id="btnConfirmarCreditoPOS">
+            <i class="fas fa-check me-1"></i> Confirmar Cr&eacute;dito
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="posCancelarModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">

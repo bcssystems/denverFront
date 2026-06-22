@@ -41,6 +41,9 @@ function bindEvents() {
 
   document.getElementById('btnCobrarPOS')?.addEventListener('click', cobrarVenta);
   document.getElementById('btnConfirmarCobroPOS')?.addEventListener('click', confirmarCobro);
+  document.getElementById('btnConfirmarCreditoPOS')?.addEventListener('click', confirmarCreditoPOS);
+  document.getElementById('posCreditoInteres')?.addEventListener('input', actualizarMontoOriginalCredito);
+  document.getElementById('posCreditoPlazo')?.addEventListener('change', actualizarMontoOriginalCredito);
   document.getElementById('btnEsperaPOS')?.addEventListener('click', ponerEnEspera);
   document.getElementById('btnNuevoClientePOS')?.addEventListener('click', () => abrirClienteModal());
   document.getElementById('btnGuardarPosCliente')?.addEventListener('click', guardarClienteDesdePOS);
@@ -459,6 +462,32 @@ async function cobrarVenta() {
   }
 
   const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
+  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
+
+  if (tipoVenta === 'CREDITO') {
+    const clienteId = parseInt(document.getElementById('posCliente').value) || null;
+    if (!clienteId) {
+      Utils.showToast('Selecciona un cliente para venta a cr\u00e9dito', 'warning');
+      return;
+    }
+    const cliente = state.clientes.find(c => c.idCliente === clienteId);
+    if (!cliente || !cliente.tieneCredito) {
+      Utils.showToast('El cliente no tiene cr\u00e9dito habilitado', 'warning');
+      return;
+    }
+    const disponible = (cliente.limiteCredito || 0) - (cliente.saldoActual || 0);
+    if (total > disponible) {
+      Utils.showToast('El total excede el l\u00edmite de cr\u00e9dito disponible ($' + disponible.toFixed(2) + ')', 'warning');
+      return;
+    }
+    document.getElementById('posCreditoTotal').textContent = '$' + total.toFixed(2);
+    document.getElementById('posCreditoClienteName').textContent = (cliente.nombre || '') + ' ' + (cliente.apellidoPaterno || '');
+    document.getElementById('posCreditoInteres').value = '0';
+    actualizarMontoOriginalCredito();
+    new bootstrap.Modal(document.getElementById('posCreditoModal')).show();
+    return;
+  }
+
   document.getElementById('posCobroTotal').textContent = '$' + total.toFixed(2);
   document.getElementById('posCobroNota').value = '';
   await cargarFormasPagoCobro();
@@ -612,10 +641,73 @@ async function confirmarCobro() {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
-function imprimirTicketVenta(venta) {
+function actualizarMontoOriginalCredito() {
+  const total = parseFloat(document.getElementById('posCreditoTotal').textContent.replace('$', ''));
+  const interes = parseFloat(document.getElementById('posCreditoInteres').value) || 0;
+  const plazo = parseInt(document.getElementById('posCreditoPlazo').value) || 1;
+  const montoOriginal = total + (total * interes / 100);
+  const pagoMensual = montoOriginal / plazo;
+  document.getElementById('posCreditoMontoOriginal').textContent = '$' + montoOriginal.toFixed(2);
+  document.getElementById('posCreditoPagoMensual').textContent = '$' + pagoMensual.toFixed(2) + ' x ' + plazo + ' meses';
+}
+
+async function confirmarCreditoPOS() {
+  if (!state.caja) { Utils.showToast('No hay caja activa', 'error'); return; }
+
+  const total = parseFloat(document.getElementById('posCreditoTotal').textContent.replace('$', ''));
+  const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
+  const clienteId = parseInt(document.getElementById('posCliente').value) || null;
+  const nota = document.getElementById('posCobroNota').value.trim() || null;
+  const plazoMeses = parseInt(document.getElementById('posCreditoPlazo').value);
+  const porcentajeInteres = parseFloat(document.getElementById('posCreditoInteres').value) || 0;
+
+  const request = {
+    idCaja: state.caja.idCaja,
+    idCliente: clienteId,
+    tipoVenta: 'CREDITO',
+    precioSeleccionado: precioIdx,
+    subtotal: subtotal,
+    descuento: subtotal - total,
+    total: total,
+    nota: nota,
+    plazoMeses: plazoMeses,
+    porcentajeInteres: porcentajeInteres,
+    detalles: state.cart.map(d => ({
+      idProducto: d.idProducto,
+      descripcion: null,
+      cantidad: d.cantidad,
+      precioUnitario: d.precioUnitario,
+      subtotal: d.cantidad * d.precioUnitario,
+    })),
+    pagos: [],
+  };
+
+  try {
+    if (state.reanudandoVentaId) {
+      await API.post('/ventas/' + state.reanudandoVentaId + '/cancelar', {});
+      state.reanudandoVentaId = null;
+    }
+    const ventaCreada = await API.post('/ventas', request);
+    Utils.showToast('Venta a cr\u00e9dito registrada', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('posCreditoModal'))?.hide();
+    const cInfo = state.clientes.find(c => c.idCliente === clienteId);
+    limpiarCart();
+    await refreshCaja();
+    await cargarEsperas();
+    imprimirTicketVenta(ventaCreada, 2, true, plazoMeses, porcentajeInteres, cInfo);
+  } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInteres, clienteInfo) {
   const now = new Date();
   const fechaStr = now.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
   const horaStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  const numCopies = copies || 1;
+  const isCredit = esCredito || venta.tipoVenta === 'CREDITO';
+
+  const totalConInteres = isCredit ? (venta.total || 0) + ((venta.total || 0) * (porcentajeInteres || 0) / 100) : (venta.total || 0);
+  const pagoMensual = isCredit && plazoMeses > 0 ? totalConInteres / plazoMeses : 0;
 
   const detalleRows = (venta.detalles || []).map(d => `
     <tr>
@@ -625,25 +717,36 @@ function imprimirTicketVenta(venta) {
       <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:right">$${(d.subtotal || 0).toFixed(2)}</td>
     </tr>`).join('');
 
-  const pagoRows = (venta.pagos || []).map(p => `
+  const pagoRows = isCredit
+    ? '<tr><td style="padding:3px 8px;font-size:11px">Cr\u00e9dito</td><td style="padding:3px 8px;font-size:11px;text-align:right">$' + totalConInteres.toFixed(2) + '</td></tr>'
+    : (venta.pagos || []).map(p => `
     <tr>
       <td style="padding:3px 8px;font-size:11px">${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
       <td style="padding:3px 8px;font-size:11px;text-align:right">$${(p.monto || 0).toFixed(2)}</td>
     </tr>`).join('');
 
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
-  printWindow.document.write(`<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Ticket - Venta #${venta.idVenta}</title>
-  <style>
+  const creditTermsHtml = isCredit ? `
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td colspan="2" style="font-weight:bold;font-size:11px">Condiciones del Cr\u00e9dito</td></tr>
+    <tr><td>Plazo</td><td>${plazoMeses || '—'} meses</td></tr>
+    <tr><td>Inter\u00e9s</td><td>${porcentajeInteres || 0}%</td></tr>
+    <tr><td>Total c/Inter\u00e9s</td><td>$${totalConInteres.toFixed(2)}</td></tr>
+    <tr><td>Pago Mensual</td><td>${plazoMeses || '—'} pago(s) de $${pagoMensual.toFixed(2)}</td></tr>
+    <tr><td>Cliente</td><td>${Utils.esc(clienteInfo ? clienteInfo.nombre + ' ' + (clienteInfo.apellidoPaterno || '') : venta.clienteNombre || '')}</td></tr>
+  </table>
+  <div style="margin-top:20px;padding-top:10px;border-top:1px solid #000">
+    <p style="font-size:11px">Firma de conformidad: _________________________________</p>
+  </div>` : '';
+
+  const ticketStyle = `
     @page { size: letter; margin: 0.5in; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; padding: 20px; }
     .header { text-align: center; margin-bottom: 16px; }
     .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: #8B4513; margin-bottom: 2px; }
     .header .sub { font-size: 10px; color: #666; }
+    .copy-label { text-align: center; font-size: 10px; color: #999; margin-bottom: 4px; }
     .divider { border-top: 1px dashed #000; margin: 8px 0; }
     .info-table { width: 100%; font-size: 11px; margin-bottom: 8px; }
     .info-table td { padding: 2px 4px; }
@@ -658,12 +761,16 @@ function imprimirTicketVenta(venta) {
     .totals .grand-total td { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 6px; }
     .nota { margin-top: 8px; padding: 8px; background: #f9f9f9; font-size: 11px; border-left: 3px solid #8B4513; }
     .footer { text-align: center; margin-top: 16px; font-size: 10px; color: #888; }
-  </style>
-</head>
-<body>
+    .print-copy { page-break-after: always; }
+    .print-copy:last-child { page-break-after: avoid; }
+  `;
+
+  function buildBodyHtml(copyIndex) {
+    return `
+  ${numCopies > 1 ? '<div class="copy-label">--- COPIA ' + (copyIndex + 1) + ' DE ' + numCopies + ' ---</div>' : ''}
   <div class="header">
     <h1>DENVER HATS</h1>
-    <div class="sub">Sistema de Administraci\u00f3n Intranet</div>
+    <div class="sub">Sistema de Administraci\u00f3n</div>
   </div>
   <div class="divider"></div>
   <table class="info-table">
@@ -694,7 +801,7 @@ function imprimirTicketVenta(venta) {
   <table class="totals">
     <tr><td>Subtotal</td><td>$${(venta.subtotal || 0).toFixed(2)}</td></tr>
     <tr><td>Descuento</td><td>-$${(venta.descuento || 0).toFixed(2)}</td></tr>
-    <tr class="grand-total"><td><strong>TOTAL</strong></td><td><strong>$${(venta.total || 0).toFixed(2)}</strong></td></tr>
+    <tr class="grand-total"><td><strong>TOTAL</strong></td><td><strong>$${(isCredit ? totalConInteres : venta.total || 0).toFixed(2)}</strong></td></tr>
   </table>
   <div class="divider"></div>
   <table class="totals">
@@ -702,12 +809,20 @@ function imprimirTicketVenta(venta) {
     ${pagoRows}
   </table>
   ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
+  ${creditTermsHtml}
   <div class="footer">
-    <p>¡Gracias por su compra!</p>
+    <p>\u00a1Gracias por su compra!</p>
     <p>${fechaStr} ${horaStr}</p>
-  </div>
-</body>
-</html>`);
+  </div>`;
+  }
+
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  let fullHtml = '<!DOCTYPE html>\n<html lang="es">\n<head>\n  <meta charset="UTF-8">\n  <title>Ticket - Venta #' + venta.idVenta + '</title>\n  <style>' + ticketStyle + '</style>\n</head>\n<body>';
+  for (let i = 0; i < numCopies; i++) {
+    fullHtml += '<div class="print-copy">' + buildBodyHtml(i) + '</div>';
+  }
+  fullHtml += '\n</body>\n</html>';
+  printWindow.document.write(fullHtml);
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => { printWindow.print(); }, 300);
@@ -770,6 +885,14 @@ function imprimirTicketCorte(corte) {
     <tr><td>Total Egresos</td><td style="color:#dc2626">-$${(corte.totalEgresos || 0).toFixed(2)}</td></tr>
     <tr class="total-row"><td>Saldo Final</td><td>$${(corte.saldoFinalContado || 0).toFixed(2)}</td></tr>
   </table>
+  ${corte.detallePagos && corte.detallePagos.length > 0 ? `
+  <div class="divider"></div>
+  <div class="section-title">Desglose por Forma de Pago</div>
+  <table class="data-table">
+    ${corte.detallePagos.map(d => `
+    <tr><td>${Utils.esc(d.tipoPagoNombre || '')}</td><td>$${(d.monto || 0).toFixed(2)}</td></tr>
+    `).join('')}
+  </table>` : ''}
   ${corte.saldoEsperado != null ? `
   <div class="divider"></div>
   <table class="data-table">
@@ -906,6 +1029,26 @@ async function previewCorte() {
           <div class="text-danger fw-semibold">-$${corte.totalEgresos.toFixed(2)}</div>
         </div></div>
       </div>
+      ${corte.detallePagos && corte.detallePagos.length > 0 ? `
+      <hr>
+      <h6 class="fw-semibold">Desglose por Forma de Pago</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-custom mb-0">
+          <thead>
+            <tr>
+              <th>Forma de Pago</th>
+              <th class="text-end">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${corte.detallePagos.map(d => `
+            <tr>
+              <td>${Utils.esc(d.tipoPagoNombre || '')}</td>
+              <td class="text-end fw-semibold">$${(d.monto || 0).toFixed(2)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
       <hr>
       <div class="text-center">
         <h5>Saldo Final</h5>
