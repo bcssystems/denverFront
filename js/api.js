@@ -1,5 +1,5 @@
 const API = {
-  baseUrl: '/api/v1',
+  baseUrl: 'http://localhost:8080/api/v1',
 
   getToken() {
     return localStorage.getItem('authToken');
@@ -103,6 +103,12 @@ const API = {
           const err = await response.json();
           message = err.error || message;
         } catch (_) {}
+
+        if (response.status === 401) {
+          this.cerrarSesion('Sesión expirada. Inicia sesión nuevamente.');
+          throw new Error('Sesión expirada');
+        }
+
         throw new Error(message);
       }
       return response.json();
@@ -134,4 +140,14 @@ const API = {
       method: 'DELETE',
     });
   },
+
+  startTokenCheck() {
+    setInterval(() => {
+      if (this.tokenExpirado()) {
+        this.cerrarSesion('Tu sesión ha expirado. Inicia sesión nuevamente.');
+      }
+    }, 60000);
+  },
 };
+
+API.startTokenCheck();
