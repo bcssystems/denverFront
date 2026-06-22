@@ -1,6 +1,16 @@
 const API = {
   baseUrl: '/api/v1',
-  mediaBaseUrl: 'http://localhost:8080',
+  _mediaBaseUrl: undefined,
+  get mediaBaseUrl() {
+    if (this._mediaBaseUrl !== undefined) return this._mediaBaseUrl;
+    if (window.location.port && window.location.port !== '8080') {
+      this._mediaBaseUrl = window.location.protocol + '//' + window.location.hostname + ':8080';
+    } else {
+      this._mediaBaseUrl = '';
+    }
+    return this._mediaBaseUrl;
+  },
+  set mediaBaseUrl(val) { this._mediaBaseUrl = val; },
 
   getToken() {
     return localStorage.getItem('authToken');
