@@ -12,6 +12,7 @@ let state = {
   cancelarVentas: [],
   cancelarSelectedId: null,
   lastCortePreview: null,
+  reservas: [],
 };
 
 const REGIMENES_FISCALES = [
@@ -47,6 +48,14 @@ function bindEvents() {
   document.getElementById('btnEsperaPOS')?.addEventListener('click', ponerEnEspera);
   document.getElementById('btnNuevoClientePOS')?.addEventListener('click', () => abrirClienteModal());
   document.getElementById('btnGuardarPosCliente')?.addEventListener('click', guardarClienteDesdePOS);
+  document.getElementById('posClienteCp')?.addEventListener('input', Utils.debounce(function() {
+    const cp = this.value.trim();
+    if (cp.length === 5) cargarColoniasPOS(cp, '');
+  }, 500));
+  document.getElementById('posClienteTieneCredito')?.addEventListener('change', function() {
+    const group = document.getElementById('posClienteLimiteCreditoGroup');
+    if (group) group.style.display = this.checked ? 'block' : 'none';
+  });
   document.getElementById('btnIngresarEfectivo')?.addEventListener('click', () => {
     new bootstrap.Modal(document.getElementById('posIngresoModal')).show();
   });
@@ -176,7 +185,7 @@ async function entrarCaja() {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
-function iniciarPOS() {
+async function iniciarPOS() {
   document.getElementById('pos-caja-selector').classList.add('d-none');
   document.getElementById('pos-interface').classList.remove('d-none');
   state.reanudandoVentaId = null;
@@ -186,7 +195,8 @@ function iniciarPOS() {
   cargarPaises('posClientePais');
   cargarRegimenes('posClienteRegimen');
   limpiarCart();
-  buscarProductos();
+  await cargarReservasSucursal();
+  await buscarProductos();
   cargarEsperas();
 }
 
@@ -207,6 +217,19 @@ function getStockSucursal(producto) {
   if (!state.caja?.idSucursal || !producto?.inventarioSucursales) return producto?.stockActual || 0;
   const inv = producto.inventarioSucursales.find(i => i.idSucursal === state.caja.idSucursal);
   return inv != null ? inv.stock : 0;
+}
+
+function isReservadoPorOtraCaja(productoId) {
+  return state.reservas.some(r => r.idProducto === productoId && r.idCaja !== state.caja?.idCaja);
+}
+
+async function cargarReservasSucursal() {
+  if (!state.caja?.idSucursal) return;
+  try {
+    state.reservas = await API.get('/carrito/reservados/' + state.caja.idSucursal);
+  } catch (_) {
+    state.reservas = [];
+  }
 }
 
 async function cargarClientesSelect(selectId) {
@@ -282,14 +305,16 @@ async function buscarProductos(showAll) {
     } else {
       list.innerHTML = state.productos.map(p => {
         const stock = getStockSucursal(p);
-        return `<div class="pos-product-result-item" data-id="${p.idProducto}">
+        const reservado = isReservadoPorOtraCaja(p.idProducto);
+        return `<div class="pos-product-result-item ${reservado ? 'text-muted opacity-50' : ''}" data-id="${p.idProducto}">
           <div>
             <div class="fw-semibold small">${Utils.esc(p.nombre)}</div>
             <small class="text-muted">SKU: ${Utils.esc(p.sku || '-')} | Stock: ${stock}</small>
+            ${reservado ? '<br><small class="badge bg-warning text-dark mt-1"><i class="fas fa-lock me-1"></i>En uso en otra caja</small>' : ''}
           </div>
           <div class="text-end">
             <div class="fw-bold" style="color:var(--primary)">$${(p.precio1 || 0).toFixed(2)}</div>
-            <button class="btn btn-sm btn-success pos-add-cart" data-id="${p.idProducto}" style="font-size:0.7rem">
+            <button class="btn btn-sm ${reservado ? 'btn-secondary' : 'btn-success'} pos-add-cart" data-id="${p.idProducto}" style="font-size:0.7rem" ${reservado ? 'disabled' : ''}>
               <i class="fas fa-cart-plus"></i>
             </button>
           </div>
@@ -319,7 +344,7 @@ async function buscarProductos(showAll) {
   }
 }
 
-function agregarAlCart(prodId) {
+async function agregarAlCart(prodId) {
   const p = state.productos.find(x => x.idProducto === prodId);
   if (!p) return;
 
@@ -335,13 +360,32 @@ function agregarAlCart(prodId) {
 
   const existente = state.cart.find(d => d.idProducto === prodId);
   if (existente) {
-    const stockSuc = getStockSucursal(p);
     if (existente.cantidad >= stockSuc) {
       Utils.showToast('Stock insuficiente en esta sucursal', 'warning');
       return;
     }
+    try {
+      await API.put('/carrito/actualizar', {
+        idCaja: state.caja.idCaja,
+        idProducto: prodId,
+        cantidad: existente.cantidad + 1,
+      });
+    } catch (err) {
+      Utils.showToast(err.message, 'error');
+      return;
+    }
     existente.cantidad++;
   } else {
+    try {
+      await API.post('/carrito/agregar', {
+        idCaja: state.caja.idCaja,
+        idProducto: prodId,
+        cantidad: 1,
+      });
+    } catch (err) {
+      Utils.showToast(err.message, 'error');
+      return;
+    }
     state.cart.push({
       idProducto: prodId,
       nombre: p.nombre,
@@ -382,11 +426,28 @@ function renderCart() {
     </tr>`).join('');
 
     tbody.querySelectorAll('.pos-cart-qty-minus').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.index);
-        if (state.cart[i].cantidad > 1) {
-          state.cart[i].cantidad--;
+        const item = state.cart[i];
+        if (item.sku === 'VR') {
+          if (item.cantidad > 1) item.cantidad--;
+          else state.cart.splice(i, 1);
+          renderCart();
+          return;
+        }
+        if (item.cantidad > 1) {
+          try {
+            await API.put('/carrito/actualizar', {
+              idCaja: state.caja.idCaja,
+              idProducto: item.idProducto,
+              cantidad: item.cantidad - 1,
+            });
+          } catch (err) { Utils.showToast(err.message, 'error'); return; }
+          item.cantidad--;
         } else {
+          try {
+            await API.del('/carrito/quitar/' + item.idProducto + '?idCaja=' + state.caja.idCaja);
+          } catch (_) {}
           state.cart.splice(i, 1);
         }
         renderCart();
@@ -394,21 +455,41 @@ function renderCart() {
     });
 
     tbody.querySelectorAll('.pos-cart-qty-plus').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.index);
-        const p = state.productos.find(x => x.idProducto === state.cart[i].idProducto);
-        if (p && state.cart[i].cantidad >= getStockSucursal(p)) {
+        const item = state.cart[i];
+        const p = state.productos.find(x => x.idProducto === item.idProducto);
+        if (item.sku === 'VR') {
+          item.cantidad++;
+          renderCart();
+          return;
+        }
+        if (p && item.cantidad >= getStockSucursal(p)) {
           Utils.showToast('Stock insuficiente en esta sucursal', 'warning');
           return;
         }
-        state.cart[i].cantidad++;
+        try {
+          await API.put('/carrito/actualizar', {
+            idCaja: state.caja.idCaja,
+            idProducto: item.idProducto,
+            cantidad: item.cantidad + 1,
+          });
+        } catch (err) { Utils.showToast(err.message, 'error'); return; }
+        item.cantidad++;
         renderCart();
       });
     });
 
     tbody.querySelectorAll('.pos-cart-remove').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.cart.splice(parseInt(btn.dataset.index), 1);
+      btn.addEventListener('click', async () => {
+        const i = parseInt(btn.dataset.index);
+        const item = state.cart[i];
+        if (item.sku !== 'VR' && state.caja?.idCaja) {
+          try {
+            await API.del('/carrito/quitar/' + item.idProducto + '?idCaja=' + state.caja.idCaja);
+          } catch (_) {}
+        }
+        state.cart.splice(i, 1);
         renderCart();
       });
     });
@@ -445,7 +526,12 @@ function recalcularTotales() {
   document.getElementById('posTotal').textContent = '$' + total.toFixed(2);
 }
 
-function limpiarCart() {
+async function limpiarCart() {
+  if (state.caja?.idCaja && state.cart.length > 0) {
+    try {
+      await API.del('/carrito/limpiar?idCaja=' + state.caja.idCaja);
+    } catch (_) {}
+  }
   state.cart = [];
   renderCart();
 }
@@ -635,7 +721,7 @@ async function confirmarCobro() {
     const ventaCreada = await API.post('/ventas', request);
     Utils.showToast('Venta registrada exitosamente', 'success');
     bootstrap.Modal.getInstance(document.getElementById('posCobroModal'))?.hide();
-    limpiarCart();
+    await limpiarCart();
     await refreshCaja();
     await cargarEsperas();
     imprimirTicketVenta(ventaCreada);
@@ -693,7 +779,7 @@ async function confirmarCreditoPOS() {
     Utils.showToast('Venta a cr\u00e9dito registrada', 'success');
     bootstrap.Modal.getInstance(document.getElementById('posCreditoModal'))?.hide();
     const cInfo = state.clientes.find(c => c.idCliente === clienteId);
-    limpiarCart();
+    await limpiarCart();
     await refreshCaja();
     await cargarEsperas();
     imprimirTicketVenta(ventaCreada, 2, true, plazoMeses, porcentajeInteres, cInfo);
@@ -941,7 +1027,7 @@ async function ponerEnEspera() {
     const venta = await API.post('/ventas', request);
     await API.post('/ventas/' + venta.idVenta + '/espera', {});
     Utils.showToast('Venta puesta en espera', 'success');
-    limpiarCart();
+    await limpiarCart();
     await cargarEsperas();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
@@ -1278,7 +1364,7 @@ async function abandonarCaja() {
   }
   localStorage.removeItem('lastCajaId');
   localStorage.removeItem('lastSucursalId');
-  state.cart = [];
+  await limpiarCart();
   state.caja = null;
   state.reanudandoVentaId = null;
   state.esperaVentas = [];
@@ -1287,6 +1373,11 @@ async function abandonarCaja() {
 
 function abrirClienteModal() {
   document.getElementById('formPosCliente').reset();
+  document.getElementById('posClienteEstado').value = '';
+  document.getElementById('posClienteMunicipio').value = '';
+  document.getElementById('posClienteColonia').innerHTML = '<option value="">Seleccionar...</option>';
+  const group = document.getElementById('posClienteLimiteCreditoGroup');
+  if (group) group.style.display = 'none';
   cargarPaises('posClientePais');
   cargarRegimenes('posClienteRegimen');
   new bootstrap.Modal(document.getElementById('posClienteModal')).show();
@@ -1297,13 +1388,22 @@ async function guardarClienteDesdePOS() {
     const calle = document.getElementById('posClienteCalle')?.value?.trim() || '';
     const numExt = document.getElementById('posClienteNumExt')?.value?.trim() || '';
     const numInt = document.getElementById('posClienteNumInt')?.value?.trim() || '';
+    const colonia = document.getElementById('posClienteColonia')?.value || '';
+    const municipio = document.getElementById('posClienteMunicipio')?.value?.trim() || '';
+    const estado = document.getElementById('posClienteEstado')?.value?.trim() || '';
+    const cp = document.getElementById('posClienteCp')?.value?.trim() || '';
     const parts = [];
     if (calle) parts.push(calle);
     if (numExt) parts.push('Ext. ' + numExt);
     if (numInt) parts.push('Int. ' + numInt);
+    if (colonia) parts.push(colonia);
+    if (municipio) parts.push(municipio);
+    if (estado) parts.push(estado);
+    if (cp) parts.push('C.P. ' + cp);
     return parts.join(', ');
   }
 
+  const tieneCredito = document.getElementById('posClienteTieneCredito').checked;
   const data = {
     nombre: document.getElementById('posClienteNombre').value.trim(),
     apellidoPaterno: document.getElementById('posClienteApaterno').value.trim(),
@@ -1315,6 +1415,8 @@ async function guardarClienteDesdePOS() {
     regimenFiscal: document.getElementById('posClienteRegimen').value,
     cp: document.getElementById('posClienteCp')?.value?.trim() || null,
     direccion: buildDireccionPOS() || null,
+    tieneCredito: tieneCredito,
+    limiteCredito: tieneCredito ? (parseFloat(document.getElementById('posClienteLimiteCredito').value) || 0) : 0,
   };
 
   if (!data.nombre) { Utils.showToast('Nombre requerido', 'warning'); return; }
@@ -1328,6 +1430,46 @@ async function guardarClienteDesdePOS() {
     bootstrap.Modal.getInstance(document.getElementById('posClienteModal'))?.hide();
     await cargarClientesSelect('posCliente');
   } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+const cpCachePOS = {};
+
+async function cargarColoniasPOS(cp, selectedColonia) {
+  if (!cp || cp.length !== 5) return;
+  if (cpCachePOS[cp]) {
+    aplicarDatosCPPOS(cpCachePOS[cp], selectedColonia);
+    return;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch('https://api.zippopotam.us/MX/' + cp, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const data = await response.json();
+    if (data && data.places) {
+      const result = {
+        colonias: data.places.map(p => p['place name']),
+        estado: data.places[0]?.state || ''
+      };
+      cpCachePOS[cp] = result;
+      aplicarDatosCPPOS(result, selectedColonia);
+    }
+  } catch (_) {
+    document.getElementById('posClienteEstado').value = '';
+    document.getElementById('posClienteColonia').innerHTML = '<option value="">No disponible</option>';
+  }
+}
+
+function aplicarDatosCPPOS(result, selectedColonia) {
+  const sel = document.getElementById('posClienteColonia');
+  if (sel) {
+    sel.innerHTML = '<option value="">Seleccionar...</option>' +
+      result.colonias.map(c => `<option value="${c}" ${c === selectedColonia ? 'selected' : ''}>${c}</option>`).join('');
+    sel.disabled = false;
+  }
+  const estadoInput = document.getElementById('posClienteEstado');
+  if (estadoInput) estadoInput.value = result.estado;
 }
 
 // --- Promociones y Combos POS Integration ---

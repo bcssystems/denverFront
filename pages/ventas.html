@@ -252,21 +252,46 @@
               <select class="form-select form-select-sm" id="posClienteRegimen"></select>
             </div>
             <div class="col-12"><hr class="my-1"></div>
-            <div class="col-3">
-              <label class="form-label">C.P.</label>
+            <div class="col-2">
+              <label class="form-label">C.P. <span class="text-danger">*</span></label>
               <input type="text" class="form-control form-control-sm" id="posClienteCp" maxlength="5" placeholder="12345">
             </div>
-            <div class="col-5">
+            <div class="col-4">
+              <label class="form-label">Estado</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteEstado" readonly>
+            </div>
+            <div class="col-3">
+              <label class="form-label">Municipio</label>
+              <input type="text" class="form-control form-control-sm" id="posClienteMunicipio">
+            </div>
+            <div class="col-3">
+              <label class="form-label">Colonia</label>
+              <select class="form-select form-select-sm" id="posClienteColonia">
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div class="col-4">
               <label class="form-label">Calle</label>
               <input type="text" class="form-control form-control-sm" id="posClienteCalle" maxlength="200">
             </div>
             <div class="col-2">
-              <label class="form-label">N&uacute;m. Ext</label>
+              <label class="form-label">N&uacute;m. Exterior</label>
               <input type="text" class="form-control form-control-sm" id="posClienteNumExt" maxlength="20">
             </div>
             <div class="col-2">
-              <label class="form-label">N&uacute;m. Int</label>
+              <label class="form-label">N&uacute;m. Interior</label>
               <input type="text" class="form-control form-control-sm" id="posClienteNumInt" maxlength="20">
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-3">
+              <div class="form-check mt-2">
+                <input type="checkbox" class="form-check-input" id="posClienteTieneCredito">
+                <label class="form-check-label" for="posClienteTieneCredito">&iquest;Tiene cr&eacute;dito?</label>
+              </div>
+            </div>
+            <div class="col-3" id="posClienteLimiteCreditoGroup" style="display:none">
+              <label class="form-label">L&iacute;mite de Cr&eacute;dito</label>
+              <input type="number" class="form-control form-control-sm" id="posClienteLimiteCredito" step="0.01" min="0">
             </div>
           </div>
         </form>
