@@ -111,6 +111,8 @@ function bindEvents() {
 }
 
 async function mostrarSelectorCaja() {
+  window.__cajaAbierta = false;
+  detenerPollingCaja();
   document.getElementById('pos-caja-selector').classList.remove('d-none');
   document.getElementById('pos-interface').classList.add('d-none');
   try {
@@ -189,6 +191,7 @@ async function iniciarPOS() {
   document.getElementById('pos-caja-selector').classList.add('d-none');
   document.getElementById('pos-interface').classList.remove('d-none');
   state.reanudandoVentaId = null;
+  window.__cajaAbierta = true;
   actualizarSaldoCaja();
   cargarClientesSelect('posCliente');
   cargarClientesSelect('posVrCliente');
@@ -196,8 +199,10 @@ async function iniciarPOS() {
   cargarRegimenes('posClienteRegimen');
   limpiarCart();
   await cargarReservasSucursal();
-  await buscarProductos();
+  state.productos = [];
+  await buscarProductos(true);
   cargarEsperas();
+  iniciarPollingCaja();
 }
 
 function actualizarSaldoCaja() {
@@ -229,6 +234,45 @@ async function cargarReservasSucursal() {
     state.reservas = await API.get('/carrito/reservados/' + state.caja.idSucursal);
   } catch (_) {
     state.reservas = [];
+  }
+}
+
+function iniciarPollingCaja() {
+  detenerPollingCaja();
+  state._pollInterval = setInterval(async () => {
+    if (!state.caja) { detenerPollingCaja(); return; }
+    await cargarReservasSucursal();
+    if (state.productos.length > 0) {
+      const list = document.getElementById('posProductList');
+      if (list) buscarProductos();
+    }
+    const reservasCaja = state.reservas.filter(r => r.idCaja === state.caja.idCaja);
+    if (reservasCaja.length !== state.cart.length) {
+      const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
+      const precioKey = 'precio' + precioIdx;
+      const nuevosCart = reservasCaja.map(r => {
+        const existente = state.cart.find(d => d.idProducto === r.idProducto);
+        if (existente) return { ...existente, cantidad: r.cantidad };
+        const prod = state.productos.find(p => p.idProducto === r.idProducto);
+        return {
+          idProducto: r.idProducto,
+          nombre: r.productoNombre || (prod ? prod.nombre : 'Producto'),
+          sku: r.productoSku || (prod ? prod.sku : ''),
+          cantidad: r.cantidad,
+          precioUnitario: prod ? (prod[precioKey] || 0) : 0,
+          atributos: prod ? (prod.atributos || []) : [],
+        };
+      });
+      state.cart = nuevosCart;
+      renderCart();
+    }
+  }, 5000);
+}
+
+function detenerPollingCaja() {
+  if (state._pollInterval) {
+    clearInterval(state._pollInterval);
+    state._pollInterval = null;
   }
 }
 
@@ -296,24 +340,30 @@ async function buscarProductos(showAll) {
     const hasQuery = q.length > 0;
     const sucursalParam = state.caja?.idSucursal ? '&idSucursal=' + state.caja.idSucursal : '';
     const url = hasQuery
-      ? '/productos?search=' + encodeURIComponent(q) + '&activo=true&page=0&size=20' + sucursalParam
-      : '/productos?activo=true&page=0&size=50&sort=sku,ASC' + sucursalParam;
+      ? '/productos/para-venta?search=' + encodeURIComponent(q) + '&page=0&size=20' + sucursalParam
+      : '/productos/para-venta?page=0&size=50&sort=sku,ASC' + sucursalParam;
     const data = await API.get(url);
     state.productos = data.content || [];
     if (state.productos.length === 0) {
       list.innerHTML = '<div class="pos-product-result-item text-muted">Sin resultados</div>';
     } else {
+      const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
+      const precioKey = 'precio' + precioIdx;
       list.innerHTML = state.productos.map(p => {
         const stock = getStockSucursal(p);
         const reservado = isReservadoPorOtraCaja(p.idProducto);
+        const attrHtml = p.atributos && p.atributos.length
+          ? '<div class="mt-1">' + p.atributos.map(a => `<span class="badge bg-secondary me-1" style="font-size:0.65rem">${Utils.esc(a.nombreAtributo)}: ${Utils.esc(a.nombreValor)}</span>`).join('') + '</div>'
+          : '';
         return `<div class="pos-product-result-item ${reservado ? 'text-muted opacity-50' : ''}" data-id="${p.idProducto}">
           <div>
             <div class="fw-semibold small">${Utils.esc(p.nombre)}</div>
+            ${attrHtml}
             <small class="text-muted">SKU: ${Utils.esc(p.sku || '-')} | Stock: ${stock}</small>
             ${reservado ? '<br><small class="badge bg-warning text-dark mt-1"><i class="fas fa-lock me-1"></i>En uso en otra caja</small>' : ''}
           </div>
           <div class="text-end">
-            <div class="fw-bold" style="color:var(--primary)">$${(p.precio1 || 0).toFixed(2)}</div>
+            <div class="fw-bold" style="color:var(--primary)">$${(p[precioKey] || 0).toFixed(2)}</div>
             <button class="btn btn-sm ${reservado ? 'btn-secondary' : 'btn-success'} pos-add-cart" data-id="${p.idProducto}" style="font-size:0.7rem" ${reservado ? 'disabled' : ''}>
               <i class="fas fa-cart-plus"></i>
             </button>
@@ -393,6 +443,7 @@ async function agregarAlCart(prodId) {
       cantidad: 1,
       precioUnitario: precio,
       stockActual: getStockSucursal(p),
+      atributos: p.atributos || [],
     });
   }
 
@@ -408,23 +459,28 @@ function renderCart() {
   if (state.cart.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state py-3"><i class="fas fa-cart-plus"></i><p>Agrega productos a la venta</p></div></td></tr>';
   } else {
-    tbody.innerHTML = state.cart.map((d, i) => `<tr>
-      <td>
-        <div class="fw-semibold small">${Utils.esc(d.nombre)}</div>
-        <small class="text-muted">${d.sku || ''}</small>
-      </td>
-      <td>
-        <div class="d-flex align-items-center gap-1">
-          <button class="pos-cart-qty-btn pos-cart-qty-minus" data-index="${i}"><i class="fas fa-minus"></i></button>
-          <span class="fw-semibold px-1">${d.cantidad}</span>
-          <button class="pos-cart-qty-btn pos-cart-qty-plus" data-index="${i}"><i class="fas fa-plus"></i></button>
-        </div>
-      </td>
-      <td>$${d.precioUnitario.toFixed(2)}</td>
-      <td class="fw-semibold">$${(d.cantidad * d.precioUnitario).toFixed(2)}</td>
-      <td><button class="pos-cart-remove" data-index="${i}"><i class="fas fa-times"></i></button></td>
-    </tr>`).join('');
-
+    tbody.innerHTML = state.cart.map((d, i) => {
+      const attrHtml = d.atributos && d.atributos.length
+        ? '<div class="mt-1">' + d.atributos.map(a => '<span class="badge bg-secondary me-1" style="font-size:0.6rem">' + Utils.esc(a.nombreAtributo) + ': ' + Utils.esc(a.nombreValor) + '</span>').join('') + '</div>'
+        : '';
+      return '<tr>' +
+      '<td>' +
+        '<div class="fw-semibold small">' + Utils.esc(d.nombre) + '</div>' +
+        attrHtml +
+        '<small class="text-muted" style="font-size:0.65rem">' + (d.sku || '') + '</small>' +
+      '</td>' +
+      '<td>' +
+        '<div class="d-flex align-items-center gap-1">' +
+          '<button class="pos-cart-qty-btn pos-cart-qty-minus" data-index="' + i + '"><i class="fas fa-minus"></i></button>' +
+          '<span class="fw-semibold px-1">' + d.cantidad + '</span>' +
+          '<button class="pos-cart-qty-btn pos-cart-qty-plus" data-index="' + i + '"><i class="fas fa-plus"></i></button>' +
+        '</div>' +
+      '</td>' +
+      '<td>$' + d.precioUnitario.toFixed(2) + '</td>' +
+      '<td class="fw-semibold">$' + (d.cantidad * d.precioUnitario).toFixed(2) + '</td>' +
+      '<td><button class="pos-cart-remove" data-index="' + i + '"><i class="fas fa-times"></i></button></td>' +
+    '</tr>';
+    }).join('');
     tbody.querySelectorAll('.pos-cart-qty-minus').forEach(btn => {
       btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.index);
@@ -796,58 +852,74 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
   const totalConInteres = isCredit ? (venta.total || 0) + ((venta.total || 0) * (porcentajeInteres || 0) / 100) : (venta.total || 0);
   const pagoMensual = isCredit && plazoMeses > 0 ? totalConInteres / plazoMeses : 0;
 
-  const detalleRows = (venta.detalles || []).map(d => `
+  const detalleRows = (venta.detalles || []).map(d => {
+    const dSubtotal = d.subtotal || (d.cantidad * d.precioUnitario) || 0;
+    return `
     <tr>
-      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px">${Utils.esc(d.productoNombre || d.descripcion || 'Producto')}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:center">${d.cantidad}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:right">$${(d.precioUnitario || 0).toFixed(2)}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:11px;text-align:right">$${(d.subtotal || 0).toFixed(2)}</td>
-    </tr>`).join('');
+      <td>${Utils.esc(d.productoNombre || d.descripcion || 'Producto')}</td>
+      <td class="center">${d.cantidad}</td>
+      <td class="right">$${(d.precioUnitario || 0).toFixed(2)}</td>
+      <td class="right">$${dSubtotal.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
 
   const pagoRows = isCredit
-    ? '<tr><td style="padding:3px 8px;font-size:11px">Cr\u00e9dito</td><td style="padding:3px 8px;font-size:11px;text-align:right">$' + totalConInteres.toFixed(2) + '</td></tr>'
+    ? '<tr><td>Cr\u00e9dito</td><td>$' + totalConInteres.toFixed(2) + '</td></tr>'
     : (venta.pagos || []).map(p => `
     <tr>
-      <td style="padding:3px 8px;font-size:11px">${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
-      <td style="padding:3px 8px;font-size:11px;text-align:right">$${(p.monto || 0).toFixed(2)}</td>
+      <td>${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
+      <td>$${(p.monto || 0).toFixed(2)}</td>
     </tr>`).join('');
 
   const creditTermsHtml = isCredit ? `
   <div class="divider"></div>
-  <table class="totals">
-    <tr><td colspan="2" style="font-weight:bold;font-size:11px">Condiciones del Cr\u00e9dito</td></tr>
-    <tr><td>Plazo</td><td>${plazoMeses || '—'} meses</td></tr>
-    <tr><td>Inter\u00e9s</td><td>${porcentajeInteres || 0}%</td></tr>
-    <tr><td>Total c/Inter\u00e9s</td><td>$${totalConInteres.toFixed(2)}</td></tr>
-    <tr><td>Pago Mensual</td><td>${plazoMeses || '—'} pago(s) de $${pagoMensual.toFixed(2)}</td></tr>
-    <tr><td>Cliente</td><td>${Utils.esc(clienteInfo ? clienteInfo.nombre + ' ' + (clienteInfo.apellidoPaterno || '') : venta.clienteNombre || '')}</td></tr>
-  </table>
-  <div style="margin-top:20px;padding-top:10px;border-top:1px solid #000">
+  <div class="pagos-section">
+    <div class="title">Condiciones del Cr\u00e9dito</div>
+    <table class="totals">
+      <tr><td>Plazo</td><td>${plazoMeses || '—'} meses</td></tr>
+      <tr><td>Inter\u00e9s</td><td>${porcentajeInteres || 0}%</td></tr>
+      <tr><td>Total c/Inter\u00e9s</td><td>$${totalConInteres.toFixed(2)}</td></tr>
+      <tr><td>Pago Mensual</td><td>${plazoMeses || '—'} pago(s) de $${pagoMensual.toFixed(2)}</td></tr>
+      <tr><td>Cliente</td><td>${Utils.esc(clienteInfo ? clienteInfo.nombre + ' ' + (clienteInfo.apellidoPaterno || '') : venta.clienteNombre || '')}</td></tr>
+    </table>
+  </div>
+  <div class="divider"></div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #ccc">
     <p style="font-size:11px">Firma de conformidad: _________________________________</p>
   </div>` : '';
 
   const ticketStyle = `
-    @page { size: letter; margin: 0.5in; }
+    @page { size: letter; margin: 0.6in; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; padding: 20px; }
-    .header { text-align: center; margin-bottom: 16px; }
-    .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: #8B4513; margin-bottom: 2px; }
-    .header .sub { font-size: 10px; color: #666; }
-    .copy-label { text-align: center; font-size: 10px; color: #999; margin-bottom: 4px; }
-    .divider { border-top: 1px dashed #000; margin: 8px 0; }
-    .info-table { width: 100%; font-size: 11px; margin-bottom: 8px; }
-    .info-table td { padding: 2px 4px; }
-    .info-table td:last-child { text-align: right; }
-    table.detalles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-    table.detalles th { font-size: 10px; text-align: left; padding: 4px 8px; border-bottom: 2px solid #000; text-transform: uppercase; }
+    body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #222; padding: 10px; }
+    .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #1a3a5c; padding-bottom: 14px; }
+    .header h1 { font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #1a3a5c; margin-bottom: 2px; text-transform: uppercase; }
+    .header .sub { font-size: 10px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+    .header .folio { font-size: 13px; color: #1a3a5c; font-weight: 600; margin-top: 6px; letter-spacing: 1px; }
+    .copy-label { text-align: center; font-size: 9px; color: #aaa; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+    .divider { border-top: 1px solid #ccc; margin: 10px 0; }
+    .info-grid { width: 100%; margin-bottom: 10px; border-collapse: collapse; }
+    .info-grid td { padding: 3px 6px; font-size: 10.5px; vertical-align: top; }
+    .info-grid .label { font-weight: 600; color: #555; width: 110px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+    .info-grid .value { color: #222; }
+    .info-grid td:last-child { text-align: left; }
+    table.detalles { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    table.detalles thead { background: #1a3a5c; color: #fff; }
+    table.detalles th { font-size: 9px; text-align: left; padding: 6px 8px; text-transform: uppercase; letter-spacing: 0.5px; }
     table.detalles th.right { text-align: right; }
     table.detalles th.center { text-align: center; }
-    .totals { width: 100%; font-size: 12px; margin-top: 4px; }
-    .totals td { padding: 3px 8px; }
-    .totals td:last-child { text-align: right; }
-    .totals .grand-total td { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 6px; }
-    .nota { margin-top: 8px; padding: 8px; background: #f9f9f9; font-size: 11px; border-left: 3px solid #8B4513; }
-    .footer { text-align: center; margin-top: 16px; font-size: 10px; color: #888; }
+    table.detalles td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; font-size: 10.5px; }
+    table.detalles td.right { text-align: right; }
+    table.detalles td.center { text-align: center; }
+    table.detalles tbody tr:nth-child(even) { background: #f8f9fa; }
+    .totals { width: 100%; margin-top: 4px; border-collapse: collapse; }
+    .totals td { padding: 3px 8px; font-size: 11px; }
+    .totals td:last-child { text-align: right; width: 140px; }
+    .totals .total-row td { font-size: 14px; font-weight: 700; border-top: 2px solid #222; padding-top: 6px; color: #1a3a5c; }
+    .nota { margin-top: 8px; padding: 8px 10px; background: #f0f4f8; font-size: 10px; border-left: 3px solid #1a3a5c; border-radius: 2px; }
+    .pagos-section { margin-top: 10px; }
+    .pagos-section .title { font-weight: 600; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .footer { text-align: center; margin-top: 20px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9px; color: #999; line-height: 1.6; }
     .print-copy { page-break-after: always; }
     .print-copy:last-child { page-break-after: avoid; }
   `;
@@ -858,26 +930,22 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
   <div class="header">
     <h1>DENVER HATS</h1>
     <div class="sub">Sistema de Administraci\u00f3n</div>
+    <div class="folio">FACTURA #${venta.idVenta}</div>
   </div>
-  <div class="divider"></div>
-  <table class="info-table">
-    <tr><td><strong>Ticket #</strong></td><td>${venta.idVenta}</td></tr>
-    <tr><td><strong>Fecha</strong></td><td>${fechaStr}</td></tr>
-    <tr><td><strong>Hora</strong></td><td>${horaStr}</td></tr>
-    <tr><td><strong>Caja</strong></td><td>${Utils.esc(venta.cajaNombre || state.caja?.nombre || '')}</td></tr>
-    <tr><td><strong>Sucursal</strong></td><td>${Utils.esc(venta.sucursalNombre || state.caja?.sucursalNombre || '')}</td></tr>
-    <tr><td><strong>Cliente</strong></td><td>${Utils.esc(venta.clienteNombre || 'Mostrador')}</td></tr>
-    <tr><td><strong>Atendi\u00f3</strong></td><td>${Utils.esc(venta.usuario || '')}</td></tr>
-    <tr><td><strong>Tipo</strong></td><td>${venta.tipoVenta || 'CONTADO'}</td></tr>
+  <table class="info-grid">
+    <tr><td class="label">Fecha</td><td class="value">${fechaStr}</td><td class="label">Caja</td><td class="value">${Utils.esc(venta.cajaNombre || state.caja?.nombre || '')}</td></tr>
+    <tr><td class="label">Hora</td><td class="value">${horaStr}</td><td class="label">Sucursal</td><td class="value">${Utils.esc(venta.sucursalNombre || state.caja?.sucursalNombre || '')}</td></tr>
+    <tr><td class="label">Cliente</td><td class="value">${Utils.esc(venta.clienteNombre || 'Mostrador')}</td><td class="label">Atendi\u00f3</td><td class="value">${Utils.esc(venta.usuario || '')}</td></tr>
+    <tr><td class="label">Tipo</td><td class="value">${venta.tipoVenta || 'CONTADO'}</td><td class="label">Folio</td><td class="value">#${venta.idVenta}</td></tr>
   </table>
   <div class="divider"></div>
   <table class="detalles">
     <thead>
       <tr>
-        <th>Producto</th>
-        <th class="center">Cant</th>
-        <th class="right">Precio</th>
-        <th class="right">Subtotal</th>
+        <th style="width:45%">Descripci\u00f3n</th>
+        <th class="center" style="width:10%">Cant</th>
+        <th class="right" style="width:20%">Precio</th>
+        <th class="right" style="width:25%">Subtotal</th>
       </tr>
     </thead>
     <tbody>
@@ -888,17 +956,20 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
   <table class="totals">
     <tr><td>Subtotal</td><td>$${(venta.subtotal || 0).toFixed(2)}</td></tr>
     <tr><td>Descuento</td><td>-$${(venta.descuento || 0).toFixed(2)}</td></tr>
-    <tr class="grand-total"><td><strong>TOTAL</strong></td><td><strong>$${(isCredit ? totalConInteres : venta.total || 0).toFixed(2)}</strong></td></tr>
+    <tr class="total-row"><td>TOTAL</td><td>$${(isCredit ? totalConInteres : venta.total || 0).toFixed(2)}</td></tr>
   </table>
   <div class="divider"></div>
-  <table class="totals">
-    <tr><td colspan="2" style="font-weight:bold;font-size:11px">Desglose de Pagos</td></tr>
-    ${pagoRows}
-  </table>
+  <div class="pagos-section">
+    <div class="title">Desglose de Pagos</div>
+    <table class="totals">
+      ${pagoRows}
+    </table>
+  </div>
   ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
   ${creditTermsHtml}
   <div class="footer">
-    <p>\u00a1Gracias por su compra!</p>
+    <p>DENVER HATS &mdash; Sistema de Administraci\u00f3n</p>
+    <p>Este documento es un comprobante interno de venta</p>
     <p>${fechaStr} ${horaStr}</p>
   </div>`;
   }
@@ -1217,13 +1288,30 @@ function renderEsperas() {
 
 async function reanudarEspera(idVenta) {
   try {
+    await API.post('/ventas/' + idVenta + '/cancelar', {});
+
     const venta = await API.get('/ventas/' + idVenta);
     if (!venta.detalles || venta.detalles.length === 0) {
       Utils.showToast('La venta no tiene productos', 'warning');
       return;
     }
 
-    state.reanudandoVentaId = idVenta;
+    for (const d of venta.detalles) {
+      await API.post('/carrito/agregar', {
+        idCaja: state.caja.idCaja,
+        idProducto: d.idProducto,
+        cantidad: 1,
+      });
+      if (d.cantidad > 1) {
+        await API.put('/carrito/actualizar', {
+          idCaja: state.caja.idCaja,
+          idProducto: d.idProducto,
+          cantidad: d.cantidad,
+        });
+      }
+    }
+
+    state.reanudandoVentaId = null;
     state.cart = venta.detalles.map(d => ({
       idProducto: d.idProducto,
       nombre: d.productoNombre || d.descripcion || 'Producto',
@@ -1231,9 +1319,10 @@ async function reanudarEspera(idVenta) {
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
     }));
+    actualizarPreciosCart();
 
-    Utils.showToast('Venta #' + idVenta + ' cargada. Modifica y cobra.', 'info');
-    renderCart();
+    Utils.showToast('Venta #' + idVenta + ' reanudada. Modifica y cobra.', 'info');
+    await cargarEsperas();
 
     const tipoRadios = document.querySelectorAll('input[name="tipoVenta"]');
     tipoRadios.forEach(r => {
@@ -1362,6 +1451,8 @@ async function abandonarCaja() {
       'Tienes productos en el carrito. \u00bfAbandonar de todas formas?');
     if (!ok) return;
   }
+  window.__cajaAbierta = false;
+  detenerPollingCaja();
   localStorage.removeItem('lastCajaId');
   localStorage.removeItem('lastSucursalId');
   await limpiarCart();
