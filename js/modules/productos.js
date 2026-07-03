@@ -845,7 +845,7 @@ async function abrirCamara() {
   status.textContent = 'Solicitando acceso a la c\u00e1mara...';
 
   try {
-    _camaraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    _camaraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     video.srcObject = _camaraStream;
     status.textContent = 'Enfoca y presiona "Tomar foto"';
     new bootstrap.Modal(document.getElementById('camaraModal')).show();
