@@ -38,11 +38,14 @@ function bindEvents() {
   });
   document.getElementById('productoTreeRoot')?.addEventListener('click', handleTableClick);
   document.getElementById('multimediaInput')?.addEventListener('change', subirMultimedia);
+  document.getElementById('btnCamara')?.addEventListener('click', abrirCamara);
+  document.getElementById('btnTomarFoto')?.addEventListener('click', tomarFotoCamara);
+  document.getElementById('camaraModal')?.addEventListener('hidden.bs.modal', detenerCamara);
   document.getElementById('btnRegistrarMovimiento')?.addEventListener('click', () => abrirModalMovimiento());
   document.getElementById('productoTieneVariantes')?.addEventListener('change', toggleVariantesMode);
   document.getElementById('btnAgregarVariante')?.addEventListener('click', () => abrirModalVariante());
   document.getElementById('btnGuardarVariante')?.addEventListener('click', guardarVariante);
-  document.getElementById('variantePrecioPersonalizado')?.addEventListener('change', togglePreciosVariante);
+
 }
 
 async function cargarAtributos() {
@@ -181,8 +184,8 @@ function renderProductoNode(p, isParent) {
     <div class="producto-row">
       <div class="producto-toggle-wrapper">${toggleBtn}</div>
       <div class="producto-img ${isParent ? '' : 'clickable'}" data-id="${id}" data-action="${isParent ? '' : 'multimedia'}">${imgHtml}</div>
-      <span class="producto-sku"><strong>${Utils.esc(p.sku)}</strong></span>
-      <span class="producto-nombre">${Utils.esc(p.nombre)}</span>
+      <span class="producto-sku">${Utils.esc(p.sku)}</span>
+      <span class="producto-nombre"><strong>${Utils.esc(p.nombre)}</strong>${p.atributosAsignados && p.atributosAsignados.length ? '<br><span class="small text-muted">' + p.atributosAsignados.map(a => Utils.esc(a.nombreAtributo) + ': ' + Utils.esc(a.nombreValor)).join(', ') + '</span>' : ''}</span>
       <span class="producto-stock ${stockClass}">${stockDisplay} uds</span>
       <span class="producto-precio">$${(p.precio1 || 0).toFixed(2)}</span>
       ${tipoLabel}
@@ -270,18 +273,28 @@ function handleTableClick(e) {
 }
 
 function toggleVariantesMode() {
-  const isVariantes = document.getElementById('productoTieneVariantes').checked;
+  const checkbox = document.getElementById('productoTieneVariantes');
+  if (!checkbox.checked && state.variantes.length > 0) {
+    Utils.confirmAction(
+      '\u00bfDesactivar variantes? Se perder\u00e1n las variantes no guardadas.',
+      'Confirmar', 'Desactivar'
+    ).then(ok => {
+      if (ok) {
+        state.variantes = [];
+        document.getElementById('stockSucursalSection').style.display = 'block';
+        document.getElementById('variantesSection').style.display = 'none';
+        renderVariantes();
+      } else {
+        checkbox.checked = true;
+      }
+    });
+    return;
+  }
+  const isVariantes = checkbox.checked;
   document.getElementById('stockSucursalSection').style.display = isVariantes ? 'none' : 'block';
   document.getElementById('variantesSection').style.display = isVariantes ? 'block' : 'none';
   if (!isVariantes) state.variantes = [];
   renderVariantes();
-}
-
-function togglePreciosVariante() {
-  const isCustom = document.getElementById('variantePrecioPersonalizado').checked;
-  ['variantePrecio1', 'variantePrecio2', 'variantePrecio3', 'variantePrecio4'].forEach(id => {
-    document.getElementById(id).disabled = !isCustom;
-  });
 }
 
 function renderVariantes() {
@@ -344,8 +357,6 @@ async function abrirModalVariante(idx) {
   document.getElementById('variantePrecio2').value = '';
   document.getElementById('variantePrecio3').value = '';
   document.getElementById('variantePrecio4').value = '';
-  document.getElementById('variantePrecioPersonalizado').checked = false;
-  togglePreciosVariante();
 
   await generarAtributosSelect();
   await generarVarianteStockInputs();
@@ -355,14 +366,6 @@ async function abrirModalVariante(idx) {
     if (v) {
       document.getElementById('varianteSku').value = v.sku || '';
       document.getElementById('varianteNombre').value = v.nombre || '';
-      if (v.precioPersonalizado) {
-        document.getElementById('variantePrecio1').value = v.precio1 || '';
-        document.getElementById('variantePrecio2').value = v.precio2 || '';
-        document.getElementById('variantePrecio3').value = v.precio3 || '';
-        document.getElementById('variantePrecio4').value = v.precio4 || '';
-        document.getElementById('variantePrecioPersonalizado').checked = true;
-        togglePreciosVariante();
-      }
       if (v.idAtributoValores) {
         v.idAtributoValores.forEach(valId => {
           const opt = document.querySelector(`.variante-atributo-select option[value="${valId}"]`);
@@ -461,8 +464,6 @@ async function guardarVariante() {
     return;
   }
 
-  const precioPersonalizado = document.getElementById('variantePrecioPersonalizado').checked;
-
   const inventarios = [];
   try {
     const sucursales = await API.get('/sucursales');
@@ -484,11 +485,11 @@ async function guardarVariante() {
     sku: document.getElementById('varianteSku').value.trim() || null,
     idAtributoValores: idAtributoValores,
     atributoLabels: atributoLabels,
-    precio1: precioPersonalizado ? (parseFloat(document.getElementById('variantePrecio1').value) || null) : null,
-    precio2: precioPersonalizado ? (parseFloat(document.getElementById('variantePrecio2').value) || null) : null,
-    precio3: precioPersonalizado ? (parseFloat(document.getElementById('variantePrecio3').value) || null) : null,
-    precio4: precioPersonalizado ? (parseFloat(document.getElementById('variantePrecio4').value) || null) : null,
-    precioPersonalizado: precioPersonalizado,
+    precio1: null,
+    precio2: null,
+    precio3: null,
+    precio4: null,
+    precioPersonalizado: false,
     inventarios: inventarios,
   };
 
@@ -504,6 +505,14 @@ async function guardarVariante() {
 
 async function abrirModal(id) {
   state.editingId = id;
+
+  if (id) {
+    const p = await API.get('/productos/' + id);
+    if (p.idProductoPadre) {
+      return abrirEditarVarianteDesdeHijo(p);
+    }
+  }
+
   const modalEl = document.getElementById('productoModal');
   if (!modalEl) return;
 
@@ -530,10 +539,12 @@ async function abrirModal(id) {
       document.getElementById('productoPrecio2').value = p.precio2 || '';
       document.getElementById('productoPrecio3').value = p.precio3 || '';
       document.getElementById('productoPrecio4').value = p.precio4 || '';
+      document.getElementById('productoCosto').value = p.costoPromedio || '';
       document.getElementById('productoActivo').checked = p.activo !== false;
 
       const esVariante = !!p.idProductoPadre;
-      document.getElementById('productoTieneVariantes').disabled = esVariante;
+      const tieneVariantes = p.tieneVariantes || (p.variantes && p.variantes.length > 0);
+      document.getElementById('productoTieneVariantes').disabled = esVariante || tieneVariantes;
 
       if (p.tieneVariantes) {
         document.getElementById('productoTieneVariantes').checked = true;
@@ -597,6 +608,65 @@ async function abrirModal(id) {
   modal.show();
 }
 
+async function abrirEditarVarianteDesdeHijo(p) {
+  const parentId = p.idProductoPadre;
+  const parent = await API.get('/productos/' + parentId);
+
+  state.editingId = parentId;
+  const modalEl = document.getElementById('productoModal');
+  if (!modalEl) return;
+  const modal = new bootstrap.Modal(modalEl);
+
+  document.getElementById('productoId').value = parentId;
+  document.getElementById('productoModalTitle').textContent = 'Editar Producto';
+  document.getElementById('formProducto').reset();
+  document.getElementById('productoNombre').value = parent.nombre || '';
+  document.getElementById('productoDescripcion').value = parent.descripcion || '';
+  document.getElementById('productoPrecio1').value = parent.precio1 || '';
+  document.getElementById('productoPrecio2').value = parent.precio2 || '';
+  document.getElementById('productoPrecio3').value = parent.precio3 || '';
+  document.getElementById('productoPrecio4').value = parent.precio4 || '';
+  document.getElementById('productoCosto').value = parent.costoPromedio || '';
+  document.getElementById('productoActivo').checked = parent.activo !== false;
+
+  const skuField = document.getElementById('productoSku');
+  if (skuField) {
+    skuField.value = parent.sku || '';
+    skuField.readOnly = true;
+  }
+
+  document.getElementById('productoTieneVariantes').checked = true;
+  document.getElementById('productoTieneVariantes').disabled = true;
+  toggleVariantesMode();
+
+  state.variantes = (parent.variantes || []).map(v => ({
+    idVariante: v.idProducto,
+    nombre: v.nombre || '',
+    sku: v.sku,
+    idAtributoValores: (v.atributosAsignados || []).map(a => a.idValor),
+    atributoLabels: (v.atributosAsignados || []).map(a => a.nombreAtributo + ': ' + a.nombreValor),
+    precio1: v.precio1,
+    precio2: v.precio2,
+    precio3: v.precio3,
+    precio4: v.precio4,
+    precioPersonalizado: v.precioPersonalizado || false,
+    inventarios: (v.inventarioSucursales || []).map(i => ({
+      idSucursal: i.idSucursal,
+      stock: i.stock || 0,
+      stockMinimo: i.stockMinimo,
+      stockMaximo: i.stockMaximo,
+    })),
+  }));
+  renderVariantes();
+
+  modal.show();
+
+  const idx = state.variantes.findIndex(v => v.idVariante === p.idProducto);
+  if (idx >= 0) {
+    abrirModalVariante(idx);
+  }
+}
+
 async function generarStockInputs(editingId) {
   const container = document.getElementById('stockSucursalInputs');
   if (!container) return;
@@ -654,6 +724,7 @@ async function guardarProducto() {
     precio2: parseFloat(document.getElementById('productoPrecio2').value) || null,
     precio3: parseFloat(document.getElementById('productoPrecio3').value) || null,
     precio4: parseFloat(document.getElementById('productoPrecio4').value) || null,
+    costoPromedio: parseFloat(document.getElementById('productoCosto').value) || null,
     activo: document.getElementById('productoActivo').checked,
     tieneVariantes: tieneVariantes,
     inventarios: inventarios,
@@ -757,6 +828,73 @@ function renderMultimedia(list) {
       }
     });
   });
+}
+
+let _camaraStream = null;
+
+async function abrirCamara() {
+  if (!state.currentProductoId) {
+    Utils.showToast('Abre la multimedia de un producto primero', 'warning');
+    return;
+  }
+  const video = document.getElementById('camaraVideo');
+  const status = document.getElementById('camaraStatus');
+  if (!video || !status) return;
+
+  video.srcObject = null;
+  status.textContent = 'Solicitando acceso a la c\u00e1mara...';
+
+  try {
+    _camaraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    video.srcObject = _camaraStream;
+    status.textContent = 'Enfoca y presiona "Tomar foto"';
+    new bootstrap.Modal(document.getElementById('camaraModal')).show();
+  } catch (err) {
+    status.textContent = '';
+    if (err.name === 'NotAllowedError') {
+      Utils.showToast('Permiso de c\u00e1mara denegado. Verifica la configuraci\u00f3n del navegador.', 'error');
+    } else if (err.name === 'NotFoundError') {
+      Utils.showToast('No se encontr\u00f3 una c\u00e1mara disponible.', 'error');
+    } else {
+      Utils.showToast('Error al acceder a la c\u00e1mara: ' + err.message, 'error');
+    }
+  }
+}
+
+function detenerCamara() {
+  if (_camaraStream) {
+    _camaraStream.getTracks().forEach(t => t.stop());
+    _camaraStream = null;
+  }
+  const video = document.getElementById('camaraVideo');
+  if (video) video.srcObject = null;
+}
+
+function tomarFotoCamara() {
+  const video = document.getElementById('camaraVideo');
+  if (!video || !_camaraStream) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  canvas.toBlob(async (blob) => {
+    if (!blob || !state.currentProductoId) return;
+    const file = new File([blob], 'foto_camara_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('archivo', file);
+    formData.append('esPrincipal', 'false');
+
+    try {
+      await API.requestUpload('/productos/' + state.currentProductoId + '/multimedia', formData);
+      Utils.showToast('Foto tomada y subida', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('camaraModal'))?.hide();
+      verMultimedia(state.currentProductoId);
+    } catch (err) {
+      Utils.showToast(err.message, 'error');
+    }
+  }, 'image/jpeg', 0.92);
 }
 
 async function subirMultimedia(e) {

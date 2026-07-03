@@ -307,6 +307,18 @@ async function abrirModalDetalle(idx) {
       ).join('');
   }
 
+  sel.addEventListener('change', async function() {
+    const prodId = parseInt(this.value);
+    if (prodId) {
+      try {
+        const prod = await API.get('/productos/' + prodId);
+        if (prod.costoPromedio) {
+          document.getElementById('pedidoDetallePrecio').value = prod.costoPromedio;
+        }
+      } catch (_) {}
+    }
+  });
+
   if (idx != null) {
     const d = state.detalles[idx];
     if (d) {

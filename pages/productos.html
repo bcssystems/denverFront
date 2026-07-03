@@ -101,6 +101,10 @@
               <label class="form-label">Precio 4</label>
               <input type="number" class="form-control" id="productoPrecio4" step="0.01" min="0">
             </div>
+            <div class="col-md-3">
+              <label class="form-label">Costo</label>
+              <input type="number" class="form-control" id="productoCosto" step="0.01" min="0">
+            </div>
             <div class="col-12">
               <div class="form-check">
                 <input type="checkbox" class="form-check-input" id="productoTieneVariantes">
@@ -150,8 +154,8 @@
         <form id="formVariante">
           <input type="hidden" id="varianteIdx">
           <div class="mb-3">
-            <label class="form-label">SKU (dejar vac&iacute;o para generar autom&aacute;tico)</label>
-            <input type="text" class="form-control" id="varianteSku" maxlength="50">
+            <label class="form-label">SKU (generado autom&aacute;ticamente)</label>
+            <input type="text" class="form-control" id="varianteSku" disabled>
           </div>
           <div class="mb-3">
             <label class="form-label">Nombre (dejar vac&iacute;o para heredar del producto base)</label>
@@ -164,24 +168,20 @@
           <div class="row g-2 mb-3">
             <div class="col-3">
               <label class="form-label">Precio 1</label>
-              <input type="number" class="form-control form-control-sm" id="variantePrecio1" step="0.01" min="0">
+              <input type="number" class="form-control form-control-sm" id="variantePrecio1" step="0.01" min="0" disabled>
             </div>
             <div class="col-3">
               <label class="form-label">Precio 2</label>
-              <input type="number" class="form-control form-control-sm" id="variantePrecio2" step="0.01" min="0">
+              <input type="number" class="form-control form-control-sm" id="variantePrecio2" step="0.01" min="0" disabled>
             </div>
             <div class="col-3">
               <label class="form-label">Precio 3</label>
-              <input type="number" class="form-control form-control-sm" id="variantePrecio3" step="0.01" min="0">
+              <input type="number" class="form-control form-control-sm" id="variantePrecio3" step="0.01" min="0" disabled>
             </div>
             <div class="col-3">
               <label class="form-label">Precio 4</label>
-              <input type="number" class="form-control form-control-sm" id="variantePrecio4" step="0.01" min="0">
+              <input type="number" class="form-control form-control-sm" id="variantePrecio4" step="0.01" min="0" disabled>
             </div>
-          </div>
-          <div class="form-check mb-3">
-            <input type="checkbox" class="form-check-input" id="variantePrecioPersonalizado">
-            <label class="form-check-label" for="variantePrecioPersonalizado">Precios personalizados (si no, hereda del producto base)</label>
           </div>
           <div class="mb-2">
             <label class="form-label fw-semibold">Stock por Sucursal</label>
@@ -212,11 +212,14 @@
           <div class="col-lg-7">
             <h6 class="fw-semibold mb-3"><i class="fas fa-photo-video me-1"></i> Multimedia</h6>
             <div class="media-gallery mb-3" id="multimediaGallery"></div>
-            <div class="mt-2">
+            <div class="mt-2 d-flex gap-2">
               <label class="btn btn-outline-primary btn-sm">
                 <i class="fas fa-upload me-1"></i> Subir archivo
                 <input type="file" id="multimediaInput" accept="image/*,video/*" style="display:none">
               </label>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnCamara">
+                <i class="fas fa-camera me-1"></i> C&aacute;mara
+              </button>
               <small class="text-muted ms-2">Im&aacute;genes o videos</small>
             </div>
           </div>
@@ -231,9 +234,30 @@
             <hr>
             <h6 class="fw-semibold mb-2"><i class="fas fa-history me-1"></i> &Uacute;ltimos Movimientos</h6>
             <div id="movimientosRecientes"></div>
-          </div>
-        </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="camaraModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2" style="color:var(--primary)"></i>C&aacute;mara</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" id="btnCerrarCamara"></button>
       </div>
+      <div class="modal-body text-center">
+        <video id="camaraVideo" autoplay playsinline style="width:100%;max-height:60vh;border-radius:8px;background:#000"></video>
+        <div class="mt-3 text-muted small" id="camaraStatus">Solicitando acceso a la c&aacute;mara...</div>
+      </div>
+      <div class="modal-footer border-0 justify-content-center">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="btnCancelarCamara">Cancelar</button>
+        <button type="button" class="btn btn-primary px-4 ripple" id="btnTomarFoto">
+          <i class="fas fa-camera me-1"></i> Tomar foto
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
     </div>
   </div>
 </div>
