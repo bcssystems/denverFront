@@ -34,7 +34,35 @@ const REGIMENES_FISCALES = [
 
 export function init() {
   bindEvents();
-  mostrarSelectorCaja();
+  const lastCajaId = localStorage.getItem('lastCajaId');
+  const lastSucursalId = localStorage.getItem('lastSucursalId');
+  if (lastCajaId && lastSucursalId) {
+    autoEntrarCaja(lastCajaId);
+  } else {
+    mostrarSelectorCaja();
+  }
+}
+
+async function autoEntrarCaja(id) {
+  try {
+    const caja = await API.get('/cajas/' + id);
+    if (caja.estado === 'ABIERTA') {
+      state.caja = caja;
+      const selSuc = document.getElementById('posSucursalSelect');
+      const cajaSel = document.getElementById('posCajaSelect');
+      if (selSuc) selSuc.value = caja.idSucursal || '';
+      if (cajaSel) {
+        cajaSel.innerHTML = '<option value="' + caja.idCaja + '">' + Utils.esc(caja.nombre) + '</option>';
+        cajaSel.value = caja.idCaja;
+      }
+      document.getElementById('pos-caja-selector')?.classList.add('d-none');
+      iniciarPOS();
+    } else {
+      mostrarSelectorCaja();
+    }
+  } catch (_) {
+    mostrarSelectorCaja();
+  }
 }
 
 function bindEvents() {
@@ -349,22 +377,32 @@ async function buscarProductos(showAll) {
     } else {
       const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
       const precioKey = 'precio' + precioIdx;
-      list.innerHTML = state.productos.map(p => {
+
+      const sorted = [...state.productos].sort((a, b) => {
+        const stA = getStockSucursal(a) > 0 ? 0 : 1;
+        const stB = getStockSucursal(b) > 0 ? 0 : 1;
+        return stA - stB;
+      });
+
+      list.innerHTML = sorted.map(p => {
         const stock = getStockSucursal(p);
+        const sinStock = stock <= 0;
         const reservado = isReservadoPorOtraCaja(p.idProducto);
+        const disabled = reservado || sinStock;
         const attrHtml = p.atributos && p.atributos.length
           ? '<div class="mt-1">' + p.atributos.map(a => `<span class="badge bg-secondary me-1" style="font-size:0.65rem">${Utils.esc(a.nombreAtributo)}: ${Utils.esc(a.nombreValor)}</span>`).join('') + '</div>'
           : '';
-        return `<div class="pos-product-result-item ${reservado ? 'text-muted opacity-50' : ''}" data-id="${p.idProducto}">
+        return `<div class="pos-product-result-item ${disabled ? 'text-muted opacity-50' : ''}" data-id="${p.idProducto}" data-sin-stock="${sinStock}">
           <div>
             <div class="fw-semibold small">${Utils.esc(p.nombre)}</div>
             ${attrHtml}
             <small class="text-muted">SKU: ${Utils.esc(p.sku || '-')} | Stock: ${stock}</small>
+            ${sinStock ? '<br><small class="badge bg-secondary mt-1"><i class="fas fa-times-circle me-1"></i>Sin stock</small>' : ''}
             ${reservado ? '<br><small class="badge bg-warning text-dark mt-1"><i class="fas fa-lock me-1"></i>En uso en otra caja</small>' : ''}
           </div>
           <div class="text-end">
             <div class="fw-bold" style="color:var(--primary)">$${(p[precioKey] || 0).toFixed(2)}</div>
-            <button class="btn btn-sm ${reservado ? 'btn-secondary' : 'btn-success'} pos-add-cart" data-id="${p.idProducto}" style="font-size:0.7rem" ${reservado ? 'disabled' : ''}>
+            <button class="btn btn-sm ${disabled ? 'btn-secondary' : 'btn-success'} pos-add-cart" data-id="${p.idProducto}" style="font-size:0.7rem" ${disabled ? 'disabled' : ''}>
               <i class="fas fa-cart-plus"></i>
             </button>
           </div>
@@ -382,6 +420,10 @@ async function buscarProductos(showAll) {
       list.querySelectorAll('.pos-product-result-item').forEach(item => {
         item.addEventListener('click', (e) => {
           if (e.target.closest('.pos-add-cart')) return;
+          if (item.dataset.sinStock === 'true') {
+            Utils.showToast('Producto sin stock en esta sucursal', 'warning');
+            return;
+          }
           const prodId = parseInt(item.dataset.id);
           agregarAlCart(prodId);
         });
@@ -765,6 +807,7 @@ async function confirmarCobro() {
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
+      atributosText: d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null,
     })),
     pagos: pagos,
   };
@@ -822,6 +865,7 @@ async function confirmarCreditoPOS() {
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
+      atributosText: d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null,
     })),
     pagos: [],
   };
@@ -854,9 +898,11 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
 
   const detalleRows = (venta.detalles || []).map(d => {
     const dSubtotal = d.subtotal || (d.cantidad * d.precioUnitario) || 0;
+    const nombre = Utils.esc(d.productoNombre || d.descripcion || 'Producto');
+    const attrs = d.atributosText ? '<br><span class="detalle-attrs">' + Utils.esc(d.atributosText) + '</span>' : '';
     return `
-    <tr>
-      <td>${Utils.esc(d.productoNombre || d.descripcion || 'Producto')}</td>
+    <tr class="detalle-row">
+      <td>${nombre}${attrs}</td>
       <td class="center">${d.cantidad}</td>
       <td class="right">$${(d.precioUnitario || 0).toFixed(2)}</td>
       <td class="right">$${dSubtotal.toFixed(2)}</td>
@@ -864,64 +910,176 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
   }).join('');
 
   const pagoRows = isCredit
-    ? '<tr><td>Cr\u00e9dito</td><td>$' + totalConInteres.toFixed(2) + '</td></tr>'
+    ? '<tr><td>Cr\u00e9dito</td><td class="right">$' + totalConInteres.toFixed(2) + '</td></tr>'
     : (venta.pagos || []).map(p => `
     <tr>
       <td>${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
-      <td>$${(p.monto || 0).toFixed(2)}</td>
+      <td class="right">$${(p.monto || 0).toFixed(2)}</td>
     </tr>`).join('');
 
   const creditTermsHtml = isCredit ? `
-  <div class="divider"></div>
-  <div class="pagos-section">
-    <div class="title">Condiciones del Cr\u00e9dito</div>
+  <div class="section">
+    <div class="section-title">Condiciones del Cr\u00e9dito</div>
     <table class="totals">
-      <tr><td>Plazo</td><td>${plazoMeses || '—'} meses</td></tr>
-      <tr><td>Inter\u00e9s</td><td>${porcentajeInteres || 0}%</td></tr>
-      <tr><td>Total c/Inter\u00e9s</td><td>$${totalConInteres.toFixed(2)}</td></tr>
-      <tr><td>Pago Mensual</td><td>${plazoMeses || '—'} pago(s) de $${pagoMensual.toFixed(2)}</td></tr>
-      <tr><td>Cliente</td><td>${Utils.esc(clienteInfo ? clienteInfo.nombre + ' ' + (clienteInfo.apellidoPaterno || '') : venta.clienteNombre || '')}</td></tr>
+      <tr><td>Plazo</td><td class="right">${plazoMeses || '—'} meses</td></tr>
+      <tr><td>Inter\u00e9s</td><td class="right">${porcentajeInteres || 0}%</td></tr>
+      <tr><td>Total c/Inter\u00e9s</td><td class="right">$${totalConInteres.toFixed(2)}</td></tr>
+      <tr><td>Pago Mensual</td><td class="right">${plazoMeses || '—'} pago(s) de $${pagoMensual.toFixed(2)}</td></tr>
+      <tr><td>Cliente</td><td class="right">${Utils.esc(clienteInfo ? clienteInfo.nombre + ' ' + (clienteInfo.apellidoPaterno || '') : venta.clienteNombre || '')}</td></tr>
     </table>
   </div>
-  <div class="divider"></div>
-  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #ccc">
+  <div class="section" style="margin-top:24px">
     <p style="font-size:11px">Firma de conformidad: _________________________________</p>
   </div>` : '';
 
   const ticketStyle = `
-    @page { size: letter; margin: 0.6in; }
+    @page {
+      size: letter;
+      margin: 0;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #222; padding: 10px; }
-    .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #1a3a5c; padding-bottom: 14px; }
-    .header h1 { font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #1a3a5c; margin-bottom: 2px; text-transform: uppercase; }
-    .header .sub { font-size: 10px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
-    .header .folio { font-size: 13px; color: #1a3a5c; font-weight: 600; margin-top: 6px; letter-spacing: 1px; }
-    .copy-label { text-align: center; font-size: 9px; color: #aaa; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
-    .divider { border-top: 1px solid #ccc; margin: 10px 0; }
-    .info-grid { width: 100%; margin-bottom: 10px; border-collapse: collapse; }
-    .info-grid td { padding: 3px 6px; font-size: 10.5px; vertical-align: top; }
-    .info-grid .label { font-weight: 600; color: #555; width: 110px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
-    .info-grid .value { color: #222; }
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      font-size: 10pt;
+      color: #222;
+      line-height: 1.35;
+    }
+    .print-copy {
+      page-break-after: always;
+      min-height: 100vh;
+      position: relative;
+      box-sizing: border-box;
+      padding: 0.25in;
+    }
+    .print-copy:last-child { page-break-after: avoid; }
+    .copy-label {
+      text-align: center;
+      font-size: 7.5pt;
+      color: #999;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .header {
+      text-align: center;
+      padding-bottom: 8px;
+      border-bottom: 3px solid #1a3a5c;
+      margin-bottom: 10px;
+    }
+    .header h1 {
+      font-size: 22pt;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #1a3a5c;
+      text-transform: uppercase;
+    }
+    .header .sub {
+      font-size: 8pt;
+      color: #888;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .header .folio {
+      font-size: 13pt;
+      color: #1a3a5c;
+      font-weight: 700;
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+    .info-grid {
+      width: 100%;
+      margin-bottom: 8px;
+      border-collapse: collapse;
+    }
+    .info-grid td {
+      padding: 2px 6px;
+      font-size: 9pt;
+      vertical-align: top;
+    }
+    .info-grid .label {
+      font-weight: 600;
+      color: #555;
+      width: 90px;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      letter-spacing: 0.5px;
+    }
     .info-grid td:last-child { text-align: left; }
-    table.detalles { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    .divider { border-top: 1px solid #ccc; margin: 6px 0; }
+    table.detalles {
+      width: 100%;
+      border-collapse: collapse;
+    }
     table.detalles thead { background: #1a3a5c; color: #fff; }
-    table.detalles th { font-size: 9px; text-align: left; padding: 6px 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    table.detalles th {
+      font-size: 7.5pt;
+      text-align: left;
+      padding: 5px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
     table.detalles th.right { text-align: right; }
     table.detalles th.center { text-align: center; }
-    table.detalles td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; font-size: 10.5px; }
+    table.detalles td {
+      padding: 4px 6px;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 9pt;
+      vertical-align: top;
+    }
     table.detalles td.right { text-align: right; }
     table.detalles td.center { text-align: center; }
-    table.detalles tbody tr:nth-child(even) { background: #f8f9fa; }
-    .totals { width: 100%; margin-top: 4px; border-collapse: collapse; }
-    .totals td { padding: 3px 8px; font-size: 11px; }
-    .totals td:last-child { text-align: right; width: 140px; }
-    .totals .total-row td { font-size: 14px; font-weight: 700; border-top: 2px solid #222; padding-top: 6px; color: #1a3a5c; }
-    .nota { margin-top: 8px; padding: 8px 10px; background: #f0f4f8; font-size: 10px; border-left: 3px solid #1a3a5c; border-radius: 2px; }
-    .pagos-section { margin-top: 10px; }
-    .pagos-section .title { font-weight: 600; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-    .footer { text-align: center; margin-top: 20px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9px; color: #999; line-height: 1.6; }
-    .print-copy { page-break-after: always; }
-    .print-copy:last-child { page-break-after: avoid; }
+    table.detalles .detalle-attrs {
+      font-size: 7.5pt;
+      color: #666;
+      font-style: italic;
+    }
+    .totals {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .totals td {
+      padding: 2px 6px;
+      font-size: 9.5pt;
+    }
+    .totals td.right { text-align: right; }
+    .totals .total-row td {
+      font-size: 13pt;
+      font-weight: 700;
+      border-top: 2px solid #222;
+      padding-top: 6px;
+      color: #1a3a5c;
+    }
+    .section { margin-top: 8px; }
+    .section-title {
+      font-weight: 600;
+      font-size: 8pt;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .nota {
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: #f0f4f8;
+      font-size: 8.5pt;
+      border-left: 3px solid #1a3a5c;
+    }
+    .footer {
+      text-align: center;
+      padding-top: 10px;
+      border-top: 1px solid #ccc;
+      font-size: 7.5pt;
+      color: #999;
+      line-height: 1.5;
+    }
+    .footer strong { color: #666; }
+    .bottom-section {
+      position: absolute;
+      bottom: 0.25in;
+      left: 0.25in;
+      right: 0.25in;
+    }
   `;
 
   function buildBodyHtml(copyIndex) {
@@ -942,40 +1100,42 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
   <table class="detalles">
     <thead>
       <tr>
-        <th style="width:45%">Descripci\u00f3n</th>
+        <th style="width:42%">Descripci\u00f3n</th>
         <th class="center" style="width:10%">Cant</th>
         <th class="right" style="width:20%">Precio</th>
-        <th class="right" style="width:25%">Subtotal</th>
+        <th class="right" style="width:28%">Importe</th>
       </tr>
     </thead>
     <tbody>
       ${detalleRows}
     </tbody>
   </table>
-  <div class="divider"></div>
-  <table class="totals">
-    <tr><td>Subtotal</td><td>$${(venta.subtotal || 0).toFixed(2)}</td></tr>
-    <tr><td>Descuento</td><td>-$${(venta.descuento || 0).toFixed(2)}</td></tr>
-    <tr class="total-row"><td>TOTAL</td><td>$${(isCredit ? totalConInteres : venta.total || 0).toFixed(2)}</td></tr>
-  </table>
-  <div class="divider"></div>
-  <div class="pagos-section">
-    <div class="title">Desglose de Pagos</div>
+  <div class="bottom-section">
+    <div class="divider"></div>
     <table class="totals">
-      ${pagoRows}
+      <tr><td>Subtotal</td><td class="right">$${(venta.subtotal || 0).toFixed(2)}</td></tr>
+      <tr><td>Descuento</td><td class="right">-$${(venta.descuento || 0).toFixed(2)}</td></tr>
+      <tr class="total-row"><td>TOTAL</td><td class="right">$${(isCredit ? totalConInteres : venta.total || 0).toFixed(2)}</td></tr>
     </table>
-  </div>
-  ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
-  ${creditTermsHtml}
-  <div class="footer">
-    <p>DENVER HATS &mdash; Sistema de Administraci\u00f3n</p>
-    <p>Este documento es un comprobante interno de venta</p>
-    <p>${fechaStr} ${horaStr}</p>
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-title">Desglose de Pagos</div>
+      <table class="totals">
+        ${pagoRows}
+      </table>
+    </div>
+    ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
+    ${creditTermsHtml}
+    <div class="footer">
+      <strong>DENVER HATS</strong> &mdash; Sistema de Administraci\u00f3n<br>
+      Este documento es un comprobante interno de venta<br>
+      ${fechaStr} ${horaStr}
+    </div>
   </div>`;
   }
 
   const printWindow = window.open('', '_blank', 'width=800,height=600');
-  let fullHtml = '<!DOCTYPE html>\n<html lang="es">\n<head>\n  <meta charset="UTF-8">\n  <title>Ticket - Venta #' + venta.idVenta + '</title>\n  <style>' + ticketStyle + '</style>\n</head>\n<body>';
+  let fullHtml = '<!DOCTYPE html>\n<html lang="es">\n<head>\n  <meta charset="UTF-8">\n  <title>Factura - Venta #' + venta.idVenta + '</title>\n  <style>' + ticketStyle + '</style>\n</head>\n<body>';
   for (let i = 0; i < numCopies; i++) {
     fullHtml += '<div class="print-copy">' + buildBodyHtml(i) + '</div>';
   }

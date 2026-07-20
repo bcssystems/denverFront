@@ -21,11 +21,6 @@ function initSidebarDelegation() {
     if (link) {
       e.preventDefault();
 
-      if (window.__cajaAbierta) {
-        Utils.showToast('Primero abandona la caja en Punto de Venta', 'warning');
-        return;
-      }
-
       const ruta = link.getAttribute('data-view');
       const modulo = link.getAttribute('data-module');
 

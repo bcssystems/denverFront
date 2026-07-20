@@ -106,7 +106,7 @@
 </div>
 
 <div class="modal fade" id="pedidoDetalleModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0">
         <h5 class="modal-title fw-bold">Agregar Producto</h5>
@@ -115,9 +115,19 @@
       <div class="modal-body">
         <form id="formPedidoDetalle">
           <input type="hidden" id="pedidoDetalleIdx">
+          <input type="hidden" id="pedidoDetalleProductoId">
           <div class="mb-3">
-            <label class="form-label">Producto <span class="text-danger">*</span></label>
-            <select class="form-select" id="pedidoDetalleProducto"></select>
+            <input type="text" class="form-control" id="pedidoDetalleSearch" placeholder="Buscar producto por SKU o nombre...">
+          </div>
+          <div class="producto-catalogo-container mb-3" id="pedidoDetalleProductList">
+            <div class="text-muted small text-center py-4">Cargando productos...</div>
+          </div>
+          <div class="selected-producto-info d-none mb-3" id="pedidoDetalleProductoInfo">
+            <div class="panel-card p-3 bg-light">
+              <div class="fw-semibold" id="pedidoDetalleProductoNombre"></div>
+              <div class="small text-muted" id="pedidoDetalleProductoSku"></div>
+              <div class="mt-1" id="pedidoDetalleProductoAttrs"></div>
+            </div>
           </div>
           <div class="row g-3">
             <div class="col-md-6">
@@ -165,7 +175,10 @@
                   <th style="width:80px">Pedido</th>
                   <th style="width:100px">Recibido</th>
                   <th style="width:120px">Precio Compra</th>
-                  <th style="width:120px">Precio Venta Sug.</th>
+                  <th style="width:100px">Precio 1</th>
+                  <th style="width:100px">Precio 2</th>
+                  <th style="width:100px">Precio 3</th>
+                  <th style="width:100px">Precio 4</th>
                   <th style="width:80px">Recibir</th>
                 </tr>
               </thead>

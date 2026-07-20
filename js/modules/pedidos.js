@@ -7,6 +7,7 @@ let state = {
   detalles: [],
   editingDetalleIdx: null,
   productosCatalogo: [],
+  parentCostMap: {},
   sucursales: [],
   proveedores: [],
 };
@@ -62,9 +63,17 @@ async function cargarSucursalesSelect() {
 async function cargarProductosCatalogo() {
   try {
     const result = await API.get('/productos?activo=true&page=0&size=500&sort=nombre,ASC');
-    state.productosCatalogo = (result.content || []).filter(p => !p.tieneVariantes || p.idProductoPadre != null);
+    const all = result.content || [];
+    state.parentCostMap = {};
+    all.forEach(p => {
+      if (p.tieneVariantes && !p.idProductoPadre) {
+        state.parentCostMap[p.idProducto] = p.costoPromedio;
+      }
+    });
+    state.productosCatalogo = all.filter(p => !p.tieneVariantes || p.idProductoPadre != null);
   } catch (_) {
     state.productosCatalogo = [];
+    state.parentCostMap = {};
   }
 }
 
@@ -297,43 +306,115 @@ async function abrirModalDetalle(idx) {
   const modal = new bootstrap.Modal(document.getElementById('pedidoDetalleModal'));
   document.getElementById('formPedidoDetalle').reset();
   document.getElementById('pedidoDetalleIdx').value = idx != null ? idx : '';
+  document.getElementById('pedidoDetalleProductoId').value = '';
+  document.getElementById('pedidoDetalleProductoInfo').classList.add('d-none');
+  document.getElementById('pedidoDetalleSearch').value = '';
 
-  const sel = document.getElementById('pedidoDetalleProducto');
   if (state.productosCatalogo.length === 0) await cargarProductosCatalogo();
-  if (sel) {
-    sel.innerHTML = '<option value="">Seleccionar...</option>' +
-      state.productosCatalogo.map(p =>
-        `<option value="${p.idProducto}">${Utils.esc(p.sku)} - ${Utils.esc(p.nombre)}</option>`
-      ).join('');
-  }
+  renderCatalogoProductos(state.productosCatalogo);
 
-  sel.addEventListener('change', async function() {
-    const prodId = parseInt(this.value);
-    if (prodId) {
-      try {
-        const prod = await API.get('/productos/' + prodId);
-        if (prod.costoPromedio) {
-          document.getElementById('pedidoDetallePrecio').value = prod.costoPromedio;
-        }
-      } catch (_) {}
+  const searchInput = document.getElementById('pedidoDetalleSearch');
+  const onSearch = () => {
+    const q = searchInput.value.trim().toLowerCase();
+    if (!q) {
+      renderCatalogoProductos(state.productosCatalogo);
+      return;
     }
-  });
+    const filtered = state.productosCatalogo.filter(p =>
+      (p.sku && p.sku.toLowerCase().includes(q)) ||
+      (p.nombre && p.nombre.toLowerCase().includes(q))
+    );
+    renderCatalogoProductos(filtered);
+  };
+  searchInput.addEventListener('input', Utils.debounce(onSearch, 200));
 
   if (idx != null) {
     const d = state.detalles[idx];
     if (d) {
-      sel.value = d.idProducto || '';
+      document.getElementById('pedidoDetalleProductoId').value = d.idProducto || '';
       document.getElementById('pedidoDetalleCantidad').value = d.cantidad || '';
       document.getElementById('pedidoDetallePrecio').value = d.precioUnitario || '';
+      const prod = state.productosCatalogo.find(p => p.idProducto === d.idProducto);
+      if (prod) seleccionarProductoCatalogo(prod);
     }
   }
 
   modal.show();
 }
 
+function renderCatalogoProductos(productos) {
+  const container = document.getElementById('pedidoDetalleProductList');
+  if (!container) return;
+
+  if (!productos || productos.length === 0) {
+    container.innerHTML = '<div class="text-muted small text-center py-4">Sin resultados</div>';
+    return;
+  }
+
+  const selectedId = parseInt(document.getElementById('pedidoDetalleProductoId')?.value);
+  container.innerHTML = productos.map(p => {
+    const attrHtml = (p.atributosAsignados && p.atributosAsignados.length)
+      ? '<div class="mt-1">' + p.atributosAsignados.map(a =>
+          `<span class="badge bg-secondary me-1" style="font-size:0.65rem">${Utils.esc(a.nombreAtributo)}: ${Utils.esc(a.nombreValor)}</span>`
+        ).join('') + '</div>'
+      : '';
+    const isSelected = p.idProducto === selectedId;
+    const costoDisplay = p.idProductoPadre
+      ? (state.parentCostMap[p.idProductoPadre] ?? p.costoPromedio ?? 0)
+      : (p.costoPromedio ?? 0);
+    return `<div class="producto-catalogo-item ${isSelected ? 'selected' : ''}" data-id="${p.idProducto}">
+      <div>
+        <div class="fw-semibold small">${Utils.esc(p.nombre)}</div>
+        ${attrHtml}
+        <small class="text-muted">SKU: ${Utils.esc(p.sku || '-')}</small>
+      </div>
+      <div class="text-end">
+        <div class="fw-bold" style="color:var(--primary);font-size:0.85rem">$${costoDisplay.toFixed(2)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.producto-catalogo-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const prodId = parseInt(item.dataset.id);
+      const prod = state.productosCatalogo.find(x => x.idProducto === prodId);
+      if (!prod) return;
+      document.getElementById('pedidoDetalleProductoId').value = prodId;
+      try {
+        const fresh = await API.get('/productos/' + prodId);
+        let costo = fresh.costoPromedio;
+        if (fresh.idProductoPadre) {
+          const parent = await API.get('/productos/' + fresh.idProductoPadre);
+          costo = parent.costoPromedio;
+        }
+        document.getElementById('pedidoDetallePrecio').value = costo ?? 0;
+      } catch (_) {
+        document.getElementById('pedidoDetallePrecio').value = prod.costoPromedio ?? 0;
+      }
+      seleccionarProductoCatalogo(prod);
+      container.querySelectorAll('.producto-catalogo-item').forEach(el => el.classList.remove('selected'));
+      item.classList.add('selected');
+    });
+  });
+}
+
+function seleccionarProductoCatalogo(prod) {
+  const info = document.getElementById('pedidoDetalleProductoInfo');
+  info.classList.remove('d-none');
+  document.getElementById('pedidoDetalleProductoNombre').textContent = prod.nombre || '';
+  document.getElementById('pedidoDetalleProductoSku').textContent = 'SKU: ' + (prod.sku || '-');
+  const attrs = document.getElementById('pedidoDetalleProductoAttrs');
+  if (prod.atributosAsignados && prod.atributosAsignados.length) {
+    attrs.innerHTML = prod.atributosAsignados.map(a =>
+      `<span class="badge bg-secondary me-1" style="font-size:0.7rem">${Utils.esc(a.nombreAtributo)}: ${Utils.esc(a.nombreValor)}</span>`
+    ).join('');
+  } else {
+    attrs.innerHTML = '';
+  }
+}
+
 function guardarPedidoDetalle() {
-  const sel = document.getElementById('pedidoDetalleProducto');
-  const idProducto = parseInt(sel.value);
+  const idProducto = parseInt(document.getElementById('pedidoDetalleProductoId').value);
   const cantidad = parseInt(document.getElementById('pedidoDetalleCantidad').value);
   const precioUnitario = parseFloat(document.getElementById('pedidoDetallePrecio').value);
 
@@ -416,40 +497,49 @@ async function abrirRecepcion(id) {
     document.getElementById('recepcionSucursal').textContent = Utils.esc(p.sucursalNombre);
 
     const tbody = document.getElementById('recepcionDetallesBody');
-    tbody.innerHTML = (p.detalles || []).map(d => {
+    const rowsHtml = await Promise.all((p.detalles || []).map(async d => {
       const recibido = d.cantidadRecibida || 0;
       const pendiente = d.cantidadPedida - recibido;
       const precioCompra = d.costoUltimo || d.precioCompraUnitario || 0;
-      const precioSugerido = (precioCompra * (1 + 30 / 100)).toFixed(2);
+      let precio1 = '', precio2 = '', precio3 = '', precio4 = '';
+      try {
+        const prod = await API.get('/productos/' + d.idProducto);
+        precio1 = prod.precio1 ?? '';
+        precio2 = prod.precio2 ?? '';
+        precio3 = prod.precio3 ?? '';
+        precio4 = prod.precio4 ?? '';
+      } catch (_) {}
       return `<tr>
-        <td>${Utils.esc(d.productoSku)} - ${Utils.esc(d.productoNombre)}</td>
+        <td>
+          <div class="fw-semibold small">${Utils.esc(d.productoSku)} - ${Utils.esc(d.productoNombre)}</div>
+        </td>
         <td class="text-center">${d.cantidadPedida}</td>
         <td class="text-center">${recibido > 0 ? recibido : '-'}</td>
         <td>
           <input type="number" class="form-control form-control-sm recepcion-precio" data-detalle="${d.idPedidoDetalle}" value="${precioCompra}" step="0.01" min="0">
         </td>
         <td>
-          <input type="number" class="form-control form-control-sm recepcion-precio-venta" data-detalle="${d.idPedidoDetalle}" value="${precioSugerido}" step="0.01" min="0">
+          <div class="small text-muted" style="line-height:1">Anterior: $${(precio1 || 0).toFixed(2)}</div>
+          <input type="number" class="form-control form-control-sm recepcion-precio1" data-detalle="${d.idPedidoDetalle}" value="${precio1}" step="0.01" min="0">
+        </td>
+        <td>
+          <div class="small text-muted" style="line-height:1">Anterior: $${(precio2 || 0).toFixed(2)}</div>
+          <input type="number" class="form-control form-control-sm recepcion-precio2" data-detalle="${d.idPedidoDetalle}" value="${precio2}" step="0.01" min="0">
+        </td>
+        <td>
+          <div class="small text-muted" style="line-height:1">Anterior: $${(precio3 || 0).toFixed(2)}</div>
+          <input type="number" class="form-control form-control-sm recepcion-precio3" data-detalle="${d.idPedidoDetalle}" value="${precio3}" step="0.01" min="0">
+        </td>
+        <td>
+          <div class="small text-muted" style="line-height:1">Anterior: $${(precio4 || 0).toFixed(2)}</div>
+          <input type="number" class="form-control form-control-sm recepcion-precio4" data-detalle="${d.idPedidoDetalle}" value="${precio4}" step="0.01" min="0">
         </td>
         <td class="text-center">
           <input type="number" class="form-control form-control-sm recepcion-cantidad" data-detalle="${d.idPedidoDetalle}" value="${pendiente}" min="0" max="${pendiente}" style="width:80px;margin:0 auto">
         </td>
       </tr>`;
-    }).join('');
-
-    tbody.querySelectorAll('.recepcion-precio').forEach(inp => {
-      inp.addEventListener('input', function() {
-        const precio = parseFloat(this.value) || 0;
-        const row = this.closest('tr');
-        const ventaInput = row.querySelector('.recepcion-precio-venta');
-        if (ventaInput && !ventaInput.dataset.userChanged) {
-          ventaInput.value = (precio * (1 + 30 / 100)).toFixed(2);
-        }
-      });
-    });
-    tbody.querySelectorAll('.recepcion-precio-venta').forEach(inp => {
-      inp.addEventListener('input', function() { this.dataset.userChanged = 'true'; });
-    });
+    }));
+    tbody.innerHTML = rowsHtml.join('');
 
     new bootstrap.Modal(document.getElementById('recepcionModal')).show();
   } catch (err) { Utils.showToast(err.message, 'error'); }
@@ -472,13 +562,19 @@ async function confirmarRecepcion() {
       return;
     }
     const precioCompra = parseFloat(row.querySelector('.recepcion-precio')?.value) || 0;
-    const precioVenta = parseFloat(row.querySelector('.recepcion-precio-venta')?.value) || null;
+    const precio1 = parseFloat(row.querySelector('.recepcion-precio1')?.value) || null;
+    const precio2 = parseFloat(row.querySelector('.recepcion-precio2')?.value) || null;
+    const precio3 = parseFloat(row.querySelector('.recepcion-precio3')?.value) || null;
+    const precio4 = parseFloat(row.querySelector('.recepcion-precio4')?.value) || null;
     if (idDetalle && cantidad > 0) {
       detalles.push({
         idPedidoDetalle: idDetalle,
         cantidadRecibida: cantidad,
         precioCompraUnitario: precioCompra,
-        precioVentaSugerido: precioVenta,
+        precio1: precio1,
+        precio2: precio2,
+        precio3: precio3,
+        precio4: precio4,
       });
     }
   });

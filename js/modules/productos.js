@@ -212,8 +212,7 @@ function setupProductoTreeInteractions() {
       const isExpanded = node.classList.toggle('expanded');
       btn.setAttribute('aria-expanded', isExpanded);
       children.hidden = !isExpanded;
-      const icon = btn.querySelector('i');
-      if (icon) icon.classList.toggle('rotated', isExpanded);
+      btn.classList.toggle('rotated', isExpanded);
     });
   });
 }
@@ -601,7 +600,7 @@ async function abrirModal(id) {
     toggleVariantesMode();
     if (skuField) {
       skuField.value = '';
-      skuField.readOnly = false;
+      skuField.disabled = true;
     }
   }
 
@@ -734,7 +733,6 @@ async function guardarProducto() {
     data.variantes = state.variantes;
   }
 
-  if (!data.sku) { Utils.showToast('El SKU es obligatorio', 'warning'); return; }
   if (!data.nombre) { Utils.showToast('El nombre es obligatorio', 'warning'); return; }
 
   try {
