@@ -57,6 +57,7 @@ async function autoEntrarCaja(id) {
       }
       document.getElementById('pos-caja-selector')?.classList.add('d-none');
       iniciarPOS();
+      actualizarCajaInfo();
     } else {
       mostrarSelectorCaja();
     }
@@ -87,14 +88,16 @@ function bindEvents() {
   document.getElementById('btnIngresarEfectivo')?.addEventListener('click', () => {
     new bootstrap.Modal(document.getElementById('posIngresoModal')).show();
   });
-  document.getElementById('btnRetirarEfectivo')?.addEventListener('click', () => {
-    new bootstrap.Modal(document.getElementById('posRetiroModal')).show();
-  });
   document.getElementById('btnGuardarIngreso')?.addEventListener('click', ingresarEfectivo);
-  document.getElementById('btnGuardarRetiro')?.addEventListener('click', retirarEfectivo);
   document.getElementById('btnCortePOS')?.addEventListener('click', previewCorte);
   document.getElementById('btnRealizarCortePOS')?.addEventListener('click', realizarCorte);
-  document.getElementById('btnGastoPOS')?.addEventListener('click', () => new bootstrap.Modal(document.getElementById('posGastoModal')).show());
+  document.getElementById('btnGastoPOS')?.addEventListener('click', () => {
+    const el = document.getElementById('posGastoCajaInfo');
+    if (el && state.caja) {
+      el.textContent = 'Caja: ' + (state.caja.nombre || '—') + ' | Sucursal: ' + (state.caja.sucursalNombre || '—');
+    }
+    new bootstrap.Modal(document.getElementById('posGastoModal')).show();
+  });
   document.getElementById('btnSolicitarGastoPOS')?.addEventListener('click', solicitarGasto);
   document.getElementById('btnCancelarVentaPOS')?.addEventListener('click', abrirCancelarVentaModal);
   document.getElementById('btnConfirmarCancelarPOS')?.addEventListener('click', confirmarCancelarVenta);
@@ -225,18 +228,23 @@ async function iniciarPOS() {
   cargarClientesSelect('posVrCliente');
   cargarPaises('posClientePais');
   cargarRegimenes('posClienteRegimen');
-  limpiarCart();
+  state.cart = [];
+  await buscarProductos(false);
   await cargarReservasSucursal();
-  state.productos = [];
-  await buscarProductos(true);
+  await sincronizarCarritoDesdeServidor();
   cargarEsperas();
   iniciarPollingCaja();
+  actualizarCajaInfo();
 }
 
-function actualizarSaldoCaja() {
-  const el = document.getElementById('posSaldoActual');
-  if (el && state.caja) el.textContent = '$' + (state.caja.saldoActual || 0).toFixed(2);
+function actualizarCajaInfo() {
+  const el = document.getElementById('posCajaInfo');
+  if (el && state.caja) {
+    el.textContent = 'Caja: ' + (state.caja.nombre || '—') + ' | Sucursal: ' + (state.caja.sucursalNombre || '—');
+  }
 }
+
+function actualizarSaldoCaja() {}
 
 async function refreshCaja() {
   if (!state.caja) return;
@@ -265,6 +273,44 @@ async function cargarReservasSucursal() {
   }
 }
 
+async function sincronizarCarritoDesdeServidor() {
+  if (!state.caja?.idCaja) return;
+
+  const reservasCaja = state.reservas.filter(r => r.idCaja === state.caja.idCaja);
+  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
+  const precioKey = 'precio' + precioIdx;
+
+  const serverItems = reservasCaja.map(r => {
+    const prod = state.productos.find(p => p.idProducto === r.idProducto);
+    return {
+      idProducto: r.idProducto,
+      nombre: r.productoNombre || (prod ? prod.nombre : 'Producto'),
+      sku: r.productoSku || (prod ? prod.sku : ''),
+      cantidad: r.cantidad,
+      precioUnitario: prod ? (prod[precioKey] || 0) : 0,
+      atributos: prod ? (prod.atributos || []) : [],
+    };
+  });
+
+  try {
+    const rapidos = await API.get('/carrito/rapidos/' + state.caja.idCaja);
+    const vrItems = rapidos.map(r => ({
+      idProducto: -r.idItemRapido,
+      nombre: r.descripcion,
+      sku: 'VR',
+      cantidad: r.cantidad,
+      precioUnitario: r.precioVenta,
+      stockActual: 999999,
+      _idRapido: r.idItemRapido,
+    }));
+    state.cart = [...serverItems, ...vrItems];
+  } catch (_) {
+    state.cart = serverItems;
+  }
+
+  renderCart();
+}
+
 function iniciarPollingCaja() {
   detenerPollingCaja();
   state._pollInterval = setInterval(async () => {
@@ -275,7 +321,8 @@ function iniciarPollingCaja() {
       if (list) buscarProductos();
     }
     const reservasCaja = state.reservas.filter(r => r.idCaja === state.caja.idCaja);
-    if (reservasCaja.length !== state.cart.length) {
+    const cartServerCount = state.cart.filter(d => d.sku !== 'VR').length;
+    if (reservasCaja.length !== cartServerCount) {
       const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
       const precioKey = 'precio' + precioIdx;
       const nuevosCart = reservasCaja.map(r => {
@@ -292,8 +339,30 @@ function iniciarPollingCaja() {
         };
       });
       state.cart = nuevosCart;
-      renderCart();
     }
+    try {
+      const rapidos = await API.get('/carrito/rapidos/' + state.caja.idCaja);
+      const existingVr = state.cart.filter(d => d.sku === 'VR');
+      const serverVrIds = rapidos.map(r => r.idItemRapido);
+      const nuevosVr = rapidos.map(r => {
+        const existente = existingVr.find(v => v._idRapido === r.idItemRapido);
+        return {
+          idProducto: -r.idItemRapido,
+          nombre: r.descripcion,
+          sku: 'VR',
+          cantidad: existente ? existente.cantidad : r.cantidad,
+          precioUnitario: r.precioVenta,
+          stockActual: 999999,
+          _idRapido: r.idItemRapido,
+        };
+      });
+      const vrChanged = JSON.stringify(existingVr.map(v => v._idRapido).sort()) !== JSON.stringify(serverVrIds.sort())
+        || existingVr.some(v => { const s = rapidos.find(r => r.idItemRapido === v._idRapido); return s && s.cantidad !== v.cantidad; });
+      if (vrChanged || (state.cart.some(d => d.sku === 'VR') !== rapidos.length > 0)) {
+        state.cart = [...state.cart.filter(d => d.sku !== 'VR'), ...nuevosVr];
+      }
+    } catch (_) {}
+    renderCart();
   }, 5000);
 }
 
@@ -528,8 +597,13 @@ function renderCart() {
         const i = parseInt(btn.dataset.index);
         const item = state.cart[i];
         if (item.sku === 'VR') {
-          if (item.cantidad > 1) item.cantidad--;
-          else state.cart.splice(i, 1);
+          if (item.cantidad > 1) {
+            item.cantidad--;
+            try { await API.put('/carrito/rapidos/' + item._idRapido, { idCaja: state.caja.idCaja, cantidad: item.cantidad }); } catch (_) {}
+          } else {
+            try { await API.del('/carrito/rapidos/' + item._idRapido); } catch (_) {}
+            state.cart.splice(i, 1);
+          }
           renderCart();
           return;
         }
@@ -559,6 +633,7 @@ function renderCart() {
         const p = state.productos.find(x => x.idProducto === item.idProducto);
         if (item.sku === 'VR') {
           item.cantidad++;
+          try { await API.put('/carrito/rapidos/' + item._idRapido, { idCaja: state.caja.idCaja, cantidad: item.cantidad }); } catch (_) {}
           renderCart();
           return;
         }
@@ -582,7 +657,11 @@ function renderCart() {
       btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.index);
         const item = state.cart[i];
-        if (item.sku !== 'VR' && state.caja?.idCaja) {
+        if (item.sku === 'VR') {
+          if (item._idRapido) {
+            try { await API.del('/carrito/rapidos/' + item._idRapido); } catch (_) {}
+          }
+        } else if (state.caja?.idCaja) {
           try {
             await API.del('/carrito/quitar/' + item.idProducto + '?idCaja=' + state.caja.idCaja);
           } catch (_) {}
@@ -625,9 +704,12 @@ function recalcularTotales() {
 }
 
 async function limpiarCart() {
-  if (state.caja?.idCaja && state.cart.length > 0) {
+  if (state.caja?.idCaja) {
     try {
       await API.del('/carrito/limpiar?idCaja=' + state.caja.idCaja);
+    } catch (_) {}
+    try {
+      await API.del('/carrito/rapidos/limpiar?idCaja=' + state.caja.idCaja);
     } catch (_) {}
   }
   state.cart = [];
@@ -692,42 +774,28 @@ async function cargarFormasPagoCobro() {
       return;
     }
 
-    container.innerHTML = tipos.map((t, i) => {
+    container.innerHTML = tipos.map((t) => {
       const isEfectivo = t.nombre.toUpperCase() === 'EFECTIVO';
-      const checked = i === 0 ? 'checked' : '';
+      const nombreCorto = t.nombre.split(' ')[0];
       return `<div class="payment-row border rounded p-2 mb-1">
         <div class="row g-2 align-items-center">
           <div class="col-3">
-            <div class="form-check">
-              <input class="form-check-input payment-radio" type="radio" name="cobroPagoRadio" value="${t.idTipoPago}" data-nombre="${Utils.esc(t.nombre)}" ${checked}>
-              <label class="form-check-label fw-semibold small">${Utils.esc(t.nombre)}</label>
-            </div>
+            <span class="fw-semibold small">${Utils.esc(nombreCorto)}</span>
           </div>
           <div class="col-3">
             <div class="input-group input-group-sm">
               <span class="input-group-text">$</span>
-              <input type="number" class="form-control payment-monto" data-id="${t.idTipoPago}" step="0.01" min="0" value="${i === 0 ? total.toFixed(2) : '0.00'}">
+              <input type="number" class="form-control payment-monto" data-id="${t.idTipoPago}" step="0.01" min="0" value="0.00">
             </div>
           </div>
           <div class="col-6">
-            <input type="text" class="form-control form-control-sm payment-referencia" data-id="${t.idTipoPago}" placeholder="${isEfectivo ? '' : 'Referencia (ej. últimos 4 dígitos)'}" ${isEfectivo ? 'disabled' : ''}>
+            <input type="text" class="form-control form-control-sm payment-referencia" data-id="${t.idTipoPago}" placeholder="${isEfectivo ? '' : 'Referencia (ej. \u00faltimos 4 d\u00edgitos)'}" ${isEfectivo ? 'disabled' : ''}>
           </div>
         </div>
       </div>`;
     }).join('');
 
     container.addEventListener('input', recalcularSumaCobro);
-
-    container.querySelectorAll('.payment-radio').forEach(r => {
-      r.addEventListener('change', () => {
-        const id = parseInt(r.value);
-        const totalVal = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
-        container.querySelectorAll('.payment-monto').forEach(inp => {
-          inp.value = parseInt(inp.dataset.id) === id ? totalVal.toFixed(2) : '0.00';
-        });
-        recalcularSumaCobro();
-      });
-    });
 
     recalcularSumaCobro();
   } catch (err) {
@@ -1279,22 +1347,6 @@ async function ingresarEfectivo() {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
-async function retirarEfectivo() {
-  const monto = parseFloat(document.getElementById('posRetiroMonto').value);
-  const motivo = document.getElementById('posRetiroMotivo').value.trim();
-  if (!monto || monto <= 0) { Utils.showToast('Monto inv\u00e1lido', 'warning'); return; }
-  if (!motivo) { Utils.showToast('Motivo requerido', 'warning'); return; }
-
-  try {
-    await API.post('/cajas/' + state.caja.idCaja + '/egresos', { monto, motivo });
-    Utils.showToast('Retiro registrado', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('posRetiroModal'))?.hide();
-    document.getElementById('posRetiroMonto').value = '';
-    document.getElementById('posRetiroMotivo').value = '';
-    await refreshCaja();
-  } catch (err) { Utils.showToast(err.message, 'error'); }
-}
-
 async function solicitarGasto() {
   const desc = document.getElementById('posGastoDesc').value.trim();
   const monto = parseFloat(document.getElementById('posGastoMonto').value);
@@ -1384,6 +1436,14 @@ async function realizarCorte() {
       'Hay ' + state.esperaVentas.length + ' venta(s) en espera. \u00bfRealizar corte de todas formas?');
     if (!ok) return;
   }
+  try {
+    const pendientes = await API.get('/gastos/pendientes/' + state.caja.idCaja + '/count');
+    if (pendientes > 0) {
+      const ok = await Utils.confirm('Gastos Pendientes',
+        'Hay ' + pendientes + ' gasto(s) pendiente(s) por autorizar. \u00bfRealizar corte de todas formas?');
+      if (!ok) return;
+    }
+  } catch (_) {}
   try {
     const corteCreado = await API.post('/cajas/' + state.caja.idCaja + '/corte', {});
     Utils.showToast('Corte realizado', 'success');
@@ -1581,28 +1641,41 @@ async function realizarVentaRapida() {
   if (!state.caja) return;
   const desc = document.getElementById('posVrDescripcion').value.trim();
   const precioVenta = parseFloat(document.getElementById('posVrVenta').value);
+  const precioCompra = parseFloat(document.getElementById('posVrCompra').value) || null;
   const cantidad = parseInt(document.getElementById('posVrCantidad').value) || 1;
 
   if (!desc) { Utils.showToast('Descripci\u00f3n requerida', 'warning'); return; }
   if (!precioVenta || precioVenta <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
 
-  const tempId = -999999999 + state.cart.length; // negative ID within int range
-  state.cart.push({
-    idProducto: tempId,
-    nombre: desc,
-    sku: 'VR',
-    cantidad: cantidad,
-    precioUnitario: precioVenta,
-    stockActual: 999999,
-  });
+  try {
+    const resp = await API.post('/carrito/rapidos', {
+      idCaja: state.caja.idCaja,
+      descripcion: desc,
+      precioVenta: precioVenta,
+      precioCompra: precioCompra,
+      cantidad: cantidad,
+    });
 
-  renderCart();
-  bootstrap.Modal.getInstance(document.getElementById('posVentaRapidaModal'))?.hide();
-  document.getElementById('posVrDescripcion').value = '';
-  document.getElementById('posVrVenta').value = '';
-  document.getElementById('posVrCantidad').value = '1';
-  document.getElementById('posVrCompra').value = '';
-  Utils.showToast('Item agregado al carrito', 'success');
+    state.cart.push({
+      idProducto: -resp.idItemRapido,
+      nombre: desc,
+      sku: 'VR',
+      cantidad: cantidad,
+      precioUnitario: precioVenta,
+      stockActual: 999999,
+      _idRapido: resp.idItemRapido,
+    });
+
+    renderCart();
+    bootstrap.Modal.getInstance(document.getElementById('posVentaRapidaModal'))?.hide();
+    document.getElementById('posVrDescripcion').value = '';
+    document.getElementById('posVrVenta').value = '';
+    document.getElementById('posVrCantidad').value = '1';
+    document.getElementById('posVrCompra').value = '';
+    Utils.showToast('Item agregado al carrito', 'success');
+  } catch (err) {
+    Utils.showToast(err.message, 'error');
+  }
 }
 
 async function abandonarCaja() {

@@ -9,35 +9,54 @@
     </button>
   </div>
 
-  <div class="row g-3 mb-4">
-    <div class="col-md-4">
-      <div class="panel-card p-3 text-center">
-        <div class="text-muted small">Total Productos</div>
-        <div class="h4 mb-0 fw-bold" id="statsTotal">0</div>
-      </div>
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="panel-card p-3 text-center">
+      <div class="text-muted small">Stock Global</div>
+      <div class="h4 mb-0 fw-bold" id="statsStock">0</div>
     </div>
-    <div class="col-md-4">
-      <div class="panel-card p-3 text-center">
-        <div class="text-muted small">Stock Global</div>
-        <div class="h4 mb-0 fw-bold" id="statsStock">0</div>
-      </div>
+  </div>
+  <div class="col-md-4">
+    <div class="panel-card p-3 text-center">
+      <div class="text-muted small">Productos Activos</div>
+      <div class="h4 mb-0 fw-bold" id="statsActivos">0</div>
     </div>
-    <div class="col-md-4">
-      <div class="panel-card p-3 text-center">
-        <div class="text-muted small">Productos Activos</div>
-        <div class="h4 mb-0 fw-bold" id="statsActivos">0</div>
+  </div>
+  <div class="col-md-4">
+    <div class="panel-card p-3 text-center" style="cursor:pointer" id="statsCostoTotalCard">
+      <div class="text-muted small">Costo Total Inventario</div>
+      <div class="h4 mb-0 fw-bold" id="statsCostoTotal" style="color:var(--primary)">$0.00</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="costoSucursalModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold">Costo por Sucursal</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="costoSucursalBody">
+        <div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i></div>
       </div>
     </div>
   </div>
+</div>
 
   <div class="filter-bar filter-bar-2cols">
     <div class="input-group">
       <span class="input-group-text"><i class="fas fa-search"></i></span>
       <input type="text" class="form-control" id="searchProducto" placeholder="Buscar por SKU o nombre...">
     </div>
-    <div><select class="form-select sucursal-select" id="filterSucursal">
-      <option value="">Todas las sucursales</option>
-    </select></div>
+    <div class="d-flex gap-2">
+      <select class="form-select sucursal-select" id="filterSucursal">
+        <option value="">Todas las sucursales</option>
+      </select>
+      <button class="btn btn-outline-secondary btn-sm text-nowrap" id="btnToggleInactivos">
+        <i class="fas fa-eye me-1"></i> Mostrar inactivos
+      </button>
+    </div>
   </div>
 
   <div class="panel-card p-0 overflow-hidden">

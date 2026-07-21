@@ -447,6 +447,7 @@ body {
 .btn-action-receive:hover { color: #28a745; background: #d4edda; }
 .btn-action-cancel:hover { color: var(--danger); background: var(--danger-light); }
 .btn-action-complete:hover { color: #28a745; background: #d4edda; }
+.btn-action-reactivate:hover { color: #28a745; background: #d4edda; }
 
 .badge-status {
   padding: 0.25rem 0.75rem;

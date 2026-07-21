@@ -13,6 +13,7 @@ let state = {
   variantes: [],
   editingVarianteIdx: null,
   atributos: [],
+  showInactive: false,
 };
 
 export function init() {
@@ -26,6 +27,7 @@ export function init() {
 function bindEvents() {
   document.getElementById('btnNuevoProducto')?.addEventListener('click', () => abrirModal(null));
   document.getElementById('btnGuardarProducto')?.addEventListener('click', guardarProducto);
+  document.getElementById('statsCostoTotalCard')?.addEventListener('click', mostrarCostoPorSucursal);
   document.getElementById('searchProducto')?.addEventListener('input', Utils.debounce(e => {
     state.searchTerm = e.target.value;
     state.currentPage = 0;
@@ -45,6 +47,7 @@ function bindEvents() {
   document.getElementById('productoTieneVariantes')?.addEventListener('change', toggleVariantesMode);
   document.getElementById('btnAgregarVariante')?.addEventListener('click', () => abrirModalVariante());
   document.getElementById('btnGuardarVariante')?.addEventListener('click', guardarVariante);
+  document.getElementById('btnToggleInactivos')?.addEventListener('click', toggleInactivos);
 
 }
 
@@ -59,10 +62,32 @@ async function cargarAtributos() {
 async function cargarStats() {
   try {
     const stats = await API.get('/productos/stats');
-    document.getElementById('statsTotal').textContent = stats.total || 0;
     document.getElementById('statsStock').textContent = stats.stockGlobal || 0;
     document.getElementById('statsActivos').textContent = stats.activos || 0;
+    const costoTotal = stats.costoTotalInventario || 0;
+    document.getElementById('statsCostoTotal').textContent = '$' + costoTotal.toFixed(2);
   } catch (_) {}
+}
+
+async function mostrarCostoPorSucursal() {
+  const body = document.getElementById('costoSucursalBody');
+  body.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i></div>';
+  new bootstrap.Modal(document.getElementById('costoSucursalModal')).show();
+  try {
+    const data = await API.get('/productos/stats/costo-por-sucursal');
+    if (!data || data.length === 0) {
+      body.innerHTML = '<div class="text-center py-3 text-muted">Sin datos de inventario</div>';
+      return;
+    }
+    body.innerHTML = data.map(r =>
+      '<div class="d-flex justify-content-between align-items-center py-1 border-bottom">' +
+        '<span class="fw-semibold small">' + Utils.esc(r.sucursal || '—') + '</span>' +
+        '<span class="fw-bold" style="color:var(--primary)">$' + (parseFloat(r.costo) || 0).toFixed(2) + '</span>' +
+      '</div>'
+    ).join('');
+  } catch (_) {
+    body.innerHTML = '<div class="text-center py-3 text-danger">Error al cargar datos</div>';
+  }
 }
 
 async function cargarProductos(page) {
@@ -73,6 +98,7 @@ async function cargarProductos(page) {
   params.set('sort', state.sortField + ',' + state.sortDir);
   if (state.searchTerm) params.set('search', state.searchTerm);
   if (state.filterSucursal) params.set('idSucursal', state.filterSucursal);
+  params.set('activo', state.showInactive ? 'false' : 'true');
 
   try {
     const result = await API.get('/productos?' + params.toString());
@@ -84,6 +110,18 @@ async function cargarProductos(page) {
   } catch (err) {
     Utils.showToast(err.message, 'error');
   }
+}
+
+function toggleInactivos() {
+  state.showInactive = !state.showInactive;
+  state.currentPage = 0;
+  const btn = document.getElementById('btnToggleInactivos');
+  if (btn) {
+    btn.innerHTML = state.showInactive
+      ? '<i class="fas fa-eye-slash me-1"></i> Mostrar activos'
+      : '<i class="fas fa-eye me-1"></i> Mostrar inactivos';
+  }
+  cargarProductos(0);
 }
 
 async function cargarSucursalesSelect() {
@@ -192,6 +230,7 @@ function renderProductoNode(p, isParent) {
       <span class="badge-status ${p.activo ? 'badge-active' : 'badge-inactive'}">${p.activo ? 'Activo' : 'Inactivo'}</span>
       <div class="producto-actions">
         ${multimediaBtn}
+        ${!p.activo ? `<button class="btn-action btn-action-reactivate" data-id="${id}" data-action="reactivate" title="Reactivar"><i class="fas fa-undo"></i></button>` : ''}
         <button class="btn-action btn-action-edit" data-id="${id}" data-action="edit" title="Editar"><i class="fas fa-edit"></i></button>
         <button class="btn-action btn-action-delete" data-id="${id}" data-action="delete" title="Eliminar"><i class="fas fa-trash"></i></button>
       </div>
@@ -260,6 +299,7 @@ function handleTableClick(e) {
     const action = btn.dataset.action;
     if (action === 'edit') abrirModal(id);
     else if (action === 'delete') confirmarEliminar(id);
+    else if (action === 'reactivate') reactivarProducto(id);
     else if (action === 'multimedia') verMultimedia(id);
     return;
   }
@@ -493,6 +533,8 @@ async function guardarVariante() {
   };
 
   if (isEditing) {
+    const existing = state.variantes[parseInt(idx)];
+    variante.idVariante = existing?.idVariante || null;
     state.variantes[parseInt(idx)] = variante;
   } else {
     state.variantes.push(variante);
@@ -762,6 +804,22 @@ async function confirmarEliminar(id) {
   try {
     await API.del('/productos/' + id);
     Utils.showToast('Producto desactivado', 'success');
+    cargarProductos(state.currentPage);
+    cargarStats();
+  } catch (err) {
+    Utils.showToast(err.message, 'error');
+  }
+}
+
+async function reactivarProducto(id) {
+  const confirmed = await Utils.confirmAction(
+    '\u00bfReactivar este producto?', 'Confirmar', 'Reactivar'
+  );
+  if (!confirmed) return;
+
+  try {
+    await API.patch('/productos/' + id + '/reactivar');
+    Utils.showToast('Producto reactivado', 'success');
     cargarProductos(state.currentPage);
     cargarStats();
   } catch (err) {

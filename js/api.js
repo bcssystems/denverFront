@@ -1,5 +1,5 @@
 const API = {
-  baseUrl: '/api/v1',
+  baseUrl: 'http://localhost:8080/api/v1',
   _mediaBaseUrl: undefined,
   get mediaBaseUrl() {
     if (this._mediaBaseUrl !== undefined) return this._mediaBaseUrl;
@@ -149,6 +149,13 @@ const API = {
   del(endpoint) {
     return this.request(endpoint, {
       method: 'DELETE',
+    });
+  },
+
+  patch(endpoint, body) {
+    return this.request(endpoint, {
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
     });
   },
 

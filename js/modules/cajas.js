@@ -61,8 +61,6 @@ function renderTable() {
         <button class="btn-action btn-action-edit" data-id="${c.idCaja}" title="Editar"><i class="fas fa-edit"></i></button>
         ${c.estado === 'ABIERTA' ? `
           <button class="btn-action" style="color:var(--danger)" data-id="${c.idCaja}" data-action="cerrar" title="Cerrar Caja"><i class="fas fa-lock"></i></button>
-          <button class="btn-action" style="color:var(--success)" data-id="${c.idCaja}" data-action="ingreso" title="Ingresar"><i class="fas fa-plus-circle"></i></button>
-          <button class="btn-action" style="color:var(--warning)" data-id="${c.idCaja}" data-action="egreso" title="Retirar"><i class="fas fa-minus-circle"></i></button>
           <button class="btn-action" style="color:var(--info)" data-id="${c.idCaja}" data-action="corte-preview" title="Corte"><i class="fas fa-calculator"></i></button>
         ` : `
           <button class="btn-action" style="color:var(--success)" data-id="${c.idCaja}" data-action="abrir" title="Abrir Caja"><i class="fas fa-unlock"></i></button>
@@ -83,8 +81,6 @@ function handleTableClick(e) {
   else if (action === 'delete' || (!action && btn.classList.contains('btn-action-delete'))) confirmarEliminar(id);
   else if (action === 'abrir') abrirAperturaModal(id);
   else if (action === 'cerrar') cerrarCaja(id);
-  else if (action === 'ingreso') abrirMovimientoModal(id, 'INGRESO');
-  else if (action === 'egreso') abrirMovimientoModal(id, 'EGRESO');
   else if (action === 'corte-preview') previewCorte(id);
 }
 
@@ -169,15 +165,6 @@ async function cerrarCaja(id) {
     Utils.showToast('Caja cerrada', 'success');
     cargarCajas();
   } catch (err) { Utils.showToast(err.message, 'error'); }
-}
-
-function abrirMovimientoModal(id, tipo) {
-  document.getElementById('movCajaId').value = id;
-  document.getElementById('movTipo').value = tipo;
-  document.getElementById('formMovimiento').reset();
-  document.getElementById('cajaMovimientoTitle').textContent =
-    tipo === 'INGRESO' ? 'Ingresar Efectivo' : 'Retirar Efectivo';
-  new bootstrap.Modal(document.getElementById('cajaMovimientoModal')).show();
 }
 
 async function confirmarMovimiento() {

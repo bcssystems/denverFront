@@ -129,8 +129,7 @@
 
       <div class="pos-panel pos-panel-saldo">
         <div class="text-center">
-          <small class="text-muted">Saldo actual en caja</small>
-          <h3 class="fw-bold mb-0" id="posSaldoActual" style="color:var(--success)">$0.00</h3>
+          <div class="small fw-semibold" id="posCajaInfo">Caja: &mdash; | Sucursal: &mdash;</div>
         </div>
       </div>
 
@@ -147,9 +146,6 @@
         <div class="d-grid gap-2">
           <button class="btn btn-outline-success btn-sm ripple" id="btnIngresarEfectivo">
             <i class="fas fa-plus-circle me-1"></i> Ingresar Efectivo
-          </button>
-          <button class="btn btn-outline-danger btn-sm ripple" id="btnRetirarEfectivo">
-            <i class="fas fa-minus-circle me-1"></i> Retirar Efectivo
           </button>
           <button class="btn btn-outline-info btn-sm ripple" id="btnCortePOS">
             <i class="fas fa-calculator me-1"></i> Realizar Corte
@@ -358,32 +354,33 @@
   </div>
 </div>
 
-<div class="modal fade" id="posGastoModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered modal-sm">
-    <div class="modal-content border-0 shadow">
-      <div class="modal-header border-0">
-        <h5 class="modal-title fw-bold">Solicitar Gasto</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form id="formPosGasto">
-          <div class="mb-2">
-            <label class="form-label">Descripci&oacute;n <span class="text-danger">*</span></label>
-            <input type="text" class="form-control form-control-sm" id="posGastoDesc" required>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">Monto <span class="text-danger">*</span></label>
-            <input type="number" class="form-control form-control-sm" id="posGastoMonto" required min="0.01" step="0.01">
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer border-0">
-        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-warning btn-sm px-4 ripple" id="btnSolicitarGastoPOS">Solicitar</button>
+  <div class="modal fade" id="posGastoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold">Solicitar Gasto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="small text-muted mb-2" id="posGastoCajaInfo">Caja: &mdash; | Sucursal: &mdash;</div>
+          <form id="formPosGasto">
+            <div class="mb-2">
+              <label class="form-label">Descripci&oacute;n <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" id="posGastoDesc" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Monto <span class="text-danger">*</span></label>
+              <input type="number" class="form-control form-control-sm" id="posGastoMonto" required min="0.01" step="0.01">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-warning btn-sm px-4 ripple" id="btnSolicitarGastoPOS">Solicitar</button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
   <div class="modal fade" id="posIngresoModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -407,33 +404,6 @@
         <div class="modal-footer border-0">
           <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
           <button type="button" class="btn btn-success btn-sm px-4 ripple" id="btnGuardarIngreso">Ingresar</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal fade" id="posRetiroModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content border-0 shadow">
-        <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold">Retirar Efectivo</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form id="formPosRetiro">
-            <div class="mb-2">
-              <label class="form-label">Monto <span class="text-danger">*</span></label>
-              <input type="number" class="form-control form-control-sm" id="posRetiroMonto" required min="0.01" step="0.01">
-            </div>
-            <div class="mb-2">
-              <label class="form-label">Motivo <span class="text-danger">*</span></label>
-              <input type="text" class="form-control form-control-sm" id="posRetiroMotivo" required>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer border-0">
-          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-danger btn-sm px-4 ripple" id="btnGuardarRetiro">Retirar</button>
         </div>
       </div>
     </div>

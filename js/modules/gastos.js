@@ -7,8 +7,6 @@ export function init() {
 }
 
 function bindEvents() {
-  document.getElementById('btnNuevoGasto')?.addEventListener('click', () => abrirModal());
-  document.getElementById('btnGuardarGasto')?.addEventListener('click', guardarGasto);
   document.getElementById('tableGastosBody')?.addEventListener('click', handleTableClick);
   document.getElementById('filtroCajaGasto')?.addEventListener('change', cargarGastos);
   document.getElementById('btnVerPendientes')?.addEventListener('click', () => {
@@ -63,7 +61,7 @@ function renderTable() {
   if (!tbody) return;
 
   if (!state.data || state.data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-money-bill-wave"></i><p>No hay gastos</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><i class="fas fa-money-bill-wave"></i><p>No hay gastos</p></div></td></tr>';
     return;
   }
 
@@ -76,6 +74,7 @@ function renderTable() {
 
     return `<tr>
       <td>${Utils.esc(g.cajaNombre) || '-'}</td>
+      <td>${Utils.esc(g.sucursalNombre) || '-'}</td>
       <td>${Utils.esc(g.descripcion)}</td>
       <td><strong>$${g.monto.toFixed(2)}</strong></td>
       <td>${Utils.esc(g.usuario) || '-'}</td>
@@ -107,30 +106,6 @@ async function confirmarAccion(id, accion) {
   try {
     await API.post('/gastos/' + id + '/' + accion, {});
     Utils.showToast('Gasto ' + (accion === 'autorizar' ? 'autorizado' : 'rechazado'), 'success');
-    cargarGastos();
-  } catch (err) { Utils.showToast(err.message, 'error'); }
-}
-
-function abrirModal() {
-  document.getElementById('formGasto').reset();
-  new bootstrap.Modal(document.getElementById('gastoModal')).show();
-}
-
-async function guardarGasto() {
-  const data = {
-    idCaja: parseInt(document.getElementById('gastoCaja').value),
-    descripcion: document.getElementById('gastoDescripcion').value.trim(),
-    monto: parseFloat(document.getElementById('gastoMonto').value),
-  };
-
-  if (!data.idCaja) { Utils.showToast('Selecciona una caja', 'warning'); return; }
-  if (!data.descripcion) { Utils.showToast('La descripci&oacute;n es obligatoria', 'warning'); return; }
-  if (isNaN(data.monto) || data.monto <= 0) { Utils.showToast('Monto inv&aacute;lido', 'warning'); return; }
-
-  try {
-    await API.post('/gastos', data);
-    Utils.showToast('Gasto solicitado', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('gastoModal'))?.hide();
     cargarGastos();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
