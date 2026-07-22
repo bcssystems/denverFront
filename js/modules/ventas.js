@@ -13,6 +13,7 @@ let state = {
   cancelarSelectedId: null,
   lastCortePreview: null,
   reservas: [],
+  gastosPendientes: 0,
 };
 
 const REGIMENES_FISCALES = [
@@ -218,6 +219,14 @@ async function entrarCaja() {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
+async function cargarProductosParaVenta() {
+  if (!state.caja?.idSucursal) return;
+  try {
+    const data = await API.get('/productos/para-venta?page=0&size=500&sort=sku,ASC&idSucursal=' + state.caja.idSucursal);
+    state.productos = data.content || [];
+  } catch (_) { state.productos = []; }
+}
+
 async function iniciarPOS() {
   document.getElementById('pos-caja-selector').classList.add('d-none');
   document.getElementById('pos-interface').classList.remove('d-none');
@@ -229,9 +238,10 @@ async function iniciarPOS() {
   cargarPaises('posClientePais');
   cargarRegimenes('posClienteRegimen');
   state.cart = [];
-  await buscarProductos(false);
+  await cargarProductosParaVenta();
   await cargarReservasSucursal();
   await sincronizarCarritoDesdeServidor();
+  await verificarGastosPendientes();
   cargarEsperas();
   iniciarPollingCaja();
   actualizarCajaInfo();
@@ -241,6 +251,29 @@ function actualizarCajaInfo() {
   const el = document.getElementById('posCajaInfo');
   if (el && state.caja) {
     el.textContent = 'Caja: ' + (state.caja.nombre || '—') + ' | Sucursal: ' + (state.caja.sucursalNombre || '—');
+  }
+}
+
+async function verificarGastosPendientes() {
+  if (!state.caja?.idCaja) return;
+  try {
+    const count = await API.get('/gastos/pendientes/' + state.caja.idCaja + '/count');
+    state.gastosPendientes = count || 0;
+    actualizarBotonCorte();
+  } catch (_) { state.gastosPendientes = 0; }
+}
+
+function actualizarBotonCorte() {
+  const btn = document.getElementById('btnCortePOS');
+  if (!btn) return;
+  if (state.gastosPendientes > 0) {
+    btn.disabled = true;
+    btn.classList.add('disabled');
+    btn.title = 'Hay ' + state.gastosPendientes + ' gasto(s) pendiente(s) por autorizar';
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('disabled');
+    btn.title = '';
   }
 }
 
@@ -776,11 +809,10 @@ async function cargarFormasPagoCobro() {
 
     container.innerHTML = tipos.map((t) => {
       const isEfectivo = t.nombre.toUpperCase() === 'EFECTIVO';
-      const nombreCorto = t.nombre.split(' ')[0];
       return `<div class="payment-row border rounded p-2 mb-1">
         <div class="row g-2 align-items-center">
           <div class="col-3">
-            <span class="fw-semibold small">${Utils.esc(nombreCorto)}</span>
+            <span class="fw-semibold small">${Utils.esc(t.nombre)}</span>
           </div>
           <div class="col-3">
             <div class="input-group input-group-sm">
@@ -981,7 +1013,7 @@ function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInt
     ? '<tr><td>Cr\u00e9dito</td><td class="right">$' + totalConInteres.toFixed(2) + '</td></tr>'
     : (venta.pagos || []).map(p => `
     <tr>
-      <td>${Utils.esc(p.tipoPagoNombre || '')}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
+      <td>${Utils.esc((p.tipoPagoNombre || '').split(' ')[0])}${p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : ''}</td>
       <td class="right">$${(p.monto || 0).toFixed(2)}</td>
     </tr>`).join('');
 
@@ -1274,10 +1306,30 @@ function imprimirTicketCorte(corte) {
   ${corte.detallePagos && corte.detallePagos.length > 0 ? `
   <div class="divider"></div>
   <div class="section-title">Desglose por Forma de Pago</div>
-  <table class="data-table">
-    ${corte.detallePagos.map(d => `
-    <tr><td>${Utils.esc(d.tipoPagoNombre || '')}</td><td>$${(d.monto || 0).toFixed(2)}</td></tr>
-    `).join('')}
+  <table class="data-table" style="font-size:11px">
+    <tr style="font-weight:bold;border-bottom:1px solid #000">
+      <td style="width:40%">M\u00e9todo</td>
+      <td style="width:20%;text-align:center">Sistema</td>
+      <td style="width:20%;text-align:center">Real</td>
+      <td style="width:20%;text-align:center">Diferencia</td>
+    </tr>
+    ${corte.detallePagos.map(d => {
+      const diff = (d.montoReal != null) ? (d.montoReal - (d.monto || 0)) : null;
+      const diffStr = diff != null ? ((diff >= 0 ? '+' : '') + '$' + diff.toFixed(2)) : 'Sin conteo';
+      return `
+    <tr>
+      <td>${Utils.esc(d.tipoPagoNombre || '')}</td>
+      <td style="text-align:center">$${(d.monto || 0).toFixed(2)}</td>
+      <td style="text-align:center">${d.montoReal != null ? '$' + d.montoReal.toFixed(2) : '-'}</td>
+      <td style="text-align:center">${diffStr}</td>
+    </tr>`;
+    }).join('')}
+    <tr style="font-weight:bold;border-top:2px solid #000;border-bottom:none">
+      <td style="padding-top:6px">Total</td>
+      <td style="text-align:center;padding-top:6px">$${corte.detallePagos.reduce((s, d) => s + (d.monto || 0), 0).toFixed(2)}</td>
+      <td style="text-align:center;padding-top:6px">${corte.totalReal != null ? '$' + corte.totalReal.toFixed(2) : '-'}</td>
+      <td style="text-align:center;padding-top:6px">${corte.diferencia != null ? ((corte.diferencia >= 0 ? '+' : '') + '$' + corte.diferencia.toFixed(2)) : '-'}</td>
+    </tr>
   </table>` : ''}
   ${corte.saldoEsperado != null ? `
   <div class="divider"></div>
@@ -1359,6 +1411,7 @@ async function solicitarGasto() {
     bootstrap.Modal.getInstance(document.getElementById('posGastoModal'))?.hide();
     document.getElementById('posGastoDesc').value = '';
     document.getElementById('posGastoMonto').value = '';
+    await verificarGastosPendientes();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
@@ -1402,23 +1455,39 @@ async function previewCorte() {
       ${corte.detallePagos && corte.detallePagos.length > 0 ? `
       <hr>
       <h6 class="fw-semibold">Desglose por Forma de Pago</h6>
+      <p class="text-muted small mb-2">Ingresa el monto real contado para cada forma de pago</p>
       <div class="table-responsive">
         <table class="table table-sm table-custom mb-0">
           <thead>
             <tr>
               <th>Forma de Pago</th>
-              <th class="text-end">Monto</th>
+              <th class="text-end" style="width:180px">Monto Real</th>
             </tr>
           </thead>
           <tbody>
-            ${corte.detallePagos.map(d => `
+            ${corte.detallePagos.map((d, i) => `
             <tr>
               <td>${Utils.esc(d.tipoPagoNombre || '')}</td>
-              <td class="text-end fw-semibold">$${(d.monto || 0).toFixed(2)}</td>
+              <td class="text-end">
+                <input type="number" class="form-control form-control-sm corte-real-input text-end" data-id="${d.idTipoPago}" data-sistema="${(d.monto || 0)}" step="0.01" min="0" value="${(d.monto || 0).toFixed(2)}">
+              </td>
             </tr>`).join('')}
+            <tr class="border-top">
+              <td class="fw-bold">Total</td>
+              <td class="text-end fw-bold" id="posCorteTotalReal">$${corte.detallePagos.reduce((s, d) => s + (d.monto || 0), 0).toFixed(2)}</td>
+            </tr>
           </tbody>
         </table>
-      </div>` : ''}
+      </div>
+      <script>
+        document.querySelectorAll('.corte-real-input').forEach(inp => {
+          inp.addEventListener('input', function() {
+            let totalReal = 0;
+            document.querySelectorAll('.corte-real-input').forEach(i => totalReal += parseFloat(i.value) || 0);
+            document.getElementById('posCorteTotalReal').textContent = '$' + totalReal.toFixed(2);
+          });
+        });
+      </script>` : ''}
       <hr>
       <div class="text-center">
         <h5>Saldo Final</h5>
@@ -1439,13 +1508,20 @@ async function realizarCorte() {
   try {
     const pendientes = await API.get('/gastos/pendientes/' + state.caja.idCaja + '/count');
     if (pendientes > 0) {
-      const ok = await Utils.confirm('Gastos Pendientes',
-        'Hay ' + pendientes + ' gasto(s) pendiente(s) por autorizar. \u00bfRealizar corte de todas formas?');
-      if (!ok) return;
+      Utils.showToast('No se puede realizar el corte. Hay ' + pendientes + ' gasto(s) pendiente(s) por autorizar.', 'error');
+      return;
     }
   } catch (_) {}
   try {
     const corteCreado = await API.post('/cajas/' + state.caja.idCaja + '/corte', {});
+    const inputs = document.querySelectorAll('.corte-real-input');
+    if (inputs.length > 0 && corteCreado?.idCorte) {
+      const pagos = [];
+      inputs.forEach(inp => {
+        pagos.push({ idTipoPago: parseInt(inp.dataset.id), montoReal: parseFloat(inp.value) || 0 });
+      });
+      await API.put('/cortes/' + corteCreado.idCorte + '/detalle-pagos', { pagos });
+    }
     Utils.showToast('Corte realizado', 'success');
     bootstrap.Modal.getInstance(document.getElementById('posCorteModal'))?.hide();
     const cortePrint = corteCreado || state.lastCortePreview;
@@ -1579,7 +1655,7 @@ async function abrirCancelarVentaModal() {
   document.getElementById('posCancelarEmpty').classList.add('d-none');
 
   try {
-    state.cancelarVentas = await API.get('/ventas/caja/' + state.caja.idCaja);
+    state.cancelarVentas = await API.get('/ventas/sucursal/' + state.caja.idSucursal);
   } catch (_) {
     state.cancelarVentas = [];
   }
@@ -1684,6 +1760,14 @@ async function abandonarCaja() {
       'Tienes productos en el carrito. \u00bfAbandonar de todas formas?');
     if (!ok) return;
   }
+  try {
+    const pendientes = await API.get('/gastos/pendientes/' + state.caja.idCaja + '/count');
+    if (pendientes > 0) {
+      const ok = await Utils.confirm('Gastos Pendientes',
+        'Hay ' + pendientes + ' gasto(s) pendiente(s) por autorizar. \u00bfAbandonar caja de todas formas?');
+      if (!ok) return;
+    }
+  } catch (_) {}
   window.__cajaAbierta = false;
   detenerPollingCaja();
   localStorage.removeItem('lastCajaId');

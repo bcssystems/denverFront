@@ -110,6 +110,7 @@ async function verCorte(id) {
     const corte = await API.get('/cortes/' + id);
     state.currentCorte = corte;
     document.getElementById('corteDetailId').textContent = corte.idCorte;
+    const isAdmin = ['ADMINISTRADOR', 'SISTEMAS'].includes(localStorage.getItem('userRol'));
 
     const body = document.getElementById('corteDetailBody');
     body.innerHTML = `
@@ -139,32 +140,78 @@ async function verCorte(id) {
       </div>
       <div class="col-12">
         <div class="panel-card p-3">
-          <h6 class="fw-semibold mb-2">Desglose por Forma de Pago</h6>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-semibold mb-0">Desglose por Forma de Pago</h6>
+            ${isAdmin ? `<button class="btn btn-sm btn-outline-primary ripple" id="btnEditCorte"><i class="fas fa-pen me-1"></i> Editar Conteo Real</button>` : ''}
+          </div>
           ${corte.detallePagos && corte.detallePagos.length > 0 ? `
-          <table class="table table-sm table-custom mb-0">
+          <table class="table table-sm table-custom mb-0" id="corteDetalleTable">
             <thead>
               <tr>
                 <th>Forma de Pago</th>
-                <th class="text-end">Monto</th>
+                <th class="text-end">Sistema</th>
+                ${isAdmin ? '<th class="text-end" style="width:140px">Real</th>' : '<th class="text-end">Real</th>'}
+                <th class="text-end">Diferencia</th>
               </tr>
             </thead>
             <tbody>
-              ${corte.detallePagos.map(d => `
+              ${corte.detallePagos.map(d => {
+                const diff = (d.montoReal != null) ? (d.montoReal - (d.monto || 0)) : null;
+                const diffStr = diff != null ? ((diff >= 0 ? '+' : '') + '$' + diff.toFixed(2)) : '-';
+                const diffColor = diff != null ? (diff === 0 ? '' : (diff > 0 ? 'color:var(--success)' : 'color:var(--danger)')) : 'color:#999';
+                return `
               <tr>
                 <td>${Utils.esc(d.tipoPagoNombre || '')}</td>
                 <td class="text-end fw-semibold">$${(d.monto || 0).toFixed(2)}</td>
-              </tr>`).join('')}
+                ${isAdmin ? `<td class="text-end">
+                  <input type="number" class="form-control form-control-sm corte-real-input text-end" data-id="${d.idTipoPago}" data-sistema="${(d.monto || 0)}" step="0.01" min="0" value="${(d.montoReal != null ? d.montoReal : (d.monto || 0)).toFixed(2)}" disabled>
+                </td>` : `<td class="text-end fw-semibold">${d.montoReal != null ? '$' + d.montoReal.toFixed(2) : '-'}</td>`}
+                <td class="text-end fw-semibold" style="${diffColor}">${diffStr}</td>
+              </tr>`;}).join('')}
               <tr class="border-top">
                 <td class="fw-bold">Total</td>
                 <td class="text-end fw-bold">$${corte.detallePagos.reduce((s, d) => s + (d.monto || 0), 0).toFixed(2)}</td>
+                ${isAdmin ? `<td class="text-end fw-bold corte-total-real">$${(corte.totalReal || corte.detallePagos.reduce((s, d) => s + (d.monto || 0), 0)).toFixed(2)}</td>` : `<td class="text-end fw-bold">${corte.totalReal != null ? '$' + corte.totalReal.toFixed(2) : '-'}</td>`}
+                <td class="text-end fw-bold" style="${corte.diferencia != null ? (corte.diferencia === 0 ? '' : (corte.diferencia > 0 ? 'color:var(--success)' : 'color:var(--danger)')) : 'color:#999'}">${corte.diferencia != null ? ((corte.diferencia >= 0 ? '+' : '') + '$' + corte.diferencia.toFixed(2)) : '-'}</td>
               </tr>
             </tbody>
-          </table>` : '<p class="text-muted small mb-0">Sin desglose de pagos</p>'}
+          </table>
+          ${isAdmin ? '<div class="text-end mt-2 d-none" id="corteEditActions"><button class="btn btn-primary btn-sm px-3 ripple" id="btnSaveCorteReal"><i class="fas fa-save me-1"></i> Guardar Cambios</button></div>' : ''}
+          ` : '<p class="text-muted small mb-0">Sin desglose de pagos</p>'}
         </div>
       </div>
     `;
 
     new bootstrap.Modal(document.getElementById('corteDetailModal')).show();
+
+    if (isAdmin) {
+      const editBtn = document.getElementById('btnEditCorte');
+      const saveDiv = document.getElementById('corteEditActions');
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          document.querySelectorAll('#corteDetalleTable .corte-real-input').forEach(i => i.disabled = false);
+          saveDiv?.classList.remove('d-none');
+          editBtn.classList.add('d-none');
+        });
+      }
+      const saveBtn = document.getElementById('btnSaveCorteReal');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', saveCorteRealCounts);
+      }
+      document.querySelectorAll('#corteDetalleTable .corte-real-input').forEach(inp => {
+        inp.addEventListener('input', function() {
+          const sistema = parseFloat(this.dataset.sistema) || 0;
+          const real = parseFloat(this.value) || 0;
+          let totalReal = 0;
+          let totalSistema = 0;
+          document.querySelectorAll('#corteDetalleTable .corte-real-input').forEach(i => {
+            totalReal += parseFloat(i.value) || 0;
+            totalSistema += parseFloat(i.dataset.sistema) || 0;
+          });
+          document.querySelector('.corte-total-real').textContent = '$' + totalReal.toFixed(2);
+        });
+      });
+    }
   } catch (err) {
     Utils.showToast(err.message, 'error');
   }
@@ -233,10 +280,30 @@ function reimprimirCorte() {
   ${corte.detallePagos && corte.detallePagos.length > 0 ? `
   <div class="divider"></div>
   <div class="section-title">Desglose por Forma de Pago</div>
-  <table class="data-table">
-    ${corte.detallePagos.map(d => `
-    <tr><td>${Utils.esc(d.tipoPagoNombre || '')}</td><td>$${(d.monto || 0).toFixed(2)}</td></tr>
-    `).join('')}
+  <table class="data-table" style="font-size:11px">
+    <tr style="font-weight:bold;border-bottom:1px solid #000">
+      <td style="width:40%">M\u00e9todo</td>
+      <td style="width:20%;text-align:center">Sistema</td>
+      <td style="width:20%;text-align:center">Real</td>
+      <td style="width:20%;text-align:center">Diferencia</td>
+    </tr>
+    ${corte.detallePagos.map(d => {
+      const diff = (d.montoReal != null) ? (d.montoReal - (d.monto || 0)) : null;
+      const diffStr = diff != null ? ((diff >= 0 ? '+' : '') + '$' + diff.toFixed(2)) : 'Sin conteo';
+      return `
+    <tr>
+      <td>${Utils.esc(d.tipoPagoNombre || '')}</td>
+      <td style="text-align:center">$${(d.monto || 0).toFixed(2)}</td>
+      <td style="text-align:center">${d.montoReal != null ? '$' + d.montoReal.toFixed(2) : '-'}</td>
+      <td style="text-align:center">${diffStr}</td>
+    </tr>`;
+    }).join('')}
+    <tr style="font-weight:bold;border-top:2px solid #000;border-bottom:none">
+      <td style="padding-top:6px">Total</td>
+      <td style="text-align:center;padding-top:6px">$${corte.detallePagos.reduce((s, d) => s + (d.monto || 0), 0).toFixed(2)}</td>
+      <td style="text-align:center;padding-top:6px">${corte.totalReal != null ? '$' + corte.totalReal.toFixed(2) : '-'}</td>
+      <td style="text-align:center;padding-top:6px">${corte.diferencia != null ? ((corte.diferencia >= 0 ? '+' : '') + '$' + corte.diferencia.toFixed(2)) : '-'}</td>
+    </tr>
   </table>` : ''}
   <div class="footer">
     <p>--- Fin del Corte ---</p>
@@ -247,6 +314,23 @@ function reimprimirCorte() {
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => { printWindow.print(); }, 300);
+}
+
+async function saveCorteRealCounts() {
+  const corte = state.currentCorte;
+  if (!corte) return;
+  const inputs = document.querySelectorAll('#corteDetalleTable .corte-real-input');
+  const pagos = [];
+  inputs.forEach(inp => {
+    pagos.push({ idTipoPago: parseInt(inp.dataset.id), montoReal: parseFloat(inp.value) || 0 });
+  });
+  try {
+    await API.put('/cortes/' + corte.idCorte + '/detalle-pagos', { pagos });
+    Utils.showToast('Conteo real guardado', 'success');
+    state.currentCorte = await API.get('/cortes/' + corte.idCorte);
+    bootstrap.Modal.getInstance(document.getElementById('corteDetailModal'))?.hide();
+    if (state.totalPages > 0) buscar(state.page);
+  } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
 function renderPagination() {

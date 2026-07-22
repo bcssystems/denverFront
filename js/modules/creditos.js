@@ -3,6 +3,7 @@ let state = {
   selectedClienteId: null,
   creditos: [],
   movimientos: [],
+  filtro: 'pendientes',
 };
 
 export function init() {
@@ -15,6 +16,12 @@ function bindEvents() {
   document.getElementById('btnLimpiarCreditoCliente')?.addEventListener('click', limpiarBusqueda);
   document.getElementById('searchCreditoCliente')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') cargarClientesCredito();
+  });
+  document.querySelectorAll('input[name="filtroCredito"]').forEach(r => {
+    r.addEventListener('change', e => {
+      state.filtro = e.target.value;
+      cargarClientesCredito();
+    });
   });
   document.getElementById('tableCreditosClientesBody')?.addEventListener('click', handleClienteClick);
   document.getElementById('tableCreditosBody')?.addEventListener('click', handleCreditoClick);
@@ -35,7 +42,12 @@ async function cargarClientesCredito() {
   const search = document.getElementById('searchCreditoCliente')?.value?.trim() || '';
   try {
     const result = await API.get('/clientes?search=' + encodeURIComponent(search) + '&page=0&size=200');
-    state.clientes = (result.content || []).filter(c => c.tieneCredito && (c.saldoActual || 0) > 0);
+    state.clientes = (result.content || []).filter(c => {
+      if (!c.tieneCredito) return false;
+      if (state.filtro === 'pendientes') return (c.saldoActual || 0) > 0;
+      if (state.filtro === 'liquidados') return (c.saldoActual || 0) <= 0;
+      return true;
+    });
     renderClientes();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
@@ -169,6 +181,8 @@ function cerrarDetalle() {
 
 function limpiarBusqueda() {
   document.getElementById('searchCreditoCliente').value = '';
+  const radio = document.getElementById('filtroCredPendientes');
+  if (radio) { radio.checked = true; state.filtro = 'pendientes'; }
   cargarClientesCredito();
 }
 

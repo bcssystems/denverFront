@@ -28,6 +28,7 @@ function bindEvents() {
   document.getElementById('btnNuevoProducto')?.addEventListener('click', () => abrirModal(null));
   document.getElementById('btnGuardarProducto')?.addEventListener('click', guardarProducto);
   document.getElementById('statsCostoTotalCard')?.addEventListener('click', mostrarCostoPorSucursal);
+  document.getElementById('btnExportarInventario')?.addEventListener('click', exportarInventarioCSV);
   document.getElementById('searchProducto')?.addEventListener('input', Utils.debounce(e => {
     state.searchTerm = e.target.value;
     state.currentPage = 0;
@@ -140,6 +141,12 @@ async function cargarSucursalesSelect() {
         sucursales.map(s => `<option value="${s.idSucursal}">${Utils.esc(s.nombre)}</option>`).join('');
       Utils.makeSearchableSelect(sel.id);
     });
+
+    const exportSel = document.getElementById('exportSucursalSelect');
+    if (exportSel) {
+      exportSel.innerHTML = '<option value="">Todas las sucursales</option>' +
+        sucursales.map(s => `<option value="${s.idSucursal}">${Utils.esc(s.nombre)}</option>`).join('');
+    }
   } catch (err) {
     console.warn('Error al cargar sucursales:', err);
   }
@@ -1094,4 +1101,96 @@ async function cargarSucursalesTransferencia() {
     document.getElementById('movimientoSucursalOrigen').innerHTML = '<option value="">Seleccionar...</option>' + opts;
     document.getElementById('movimientoSucursalDestino').innerHTML = '<option value="">Seleccionar...</option>' + opts;
   } catch (_) {}
+}
+
+async function fetchAllProducts() {
+  const all = [];
+  let page = 0;
+  const size = 50;
+  while (true) {
+    const params = new URLSearchParams({ page, size, sort: 'idProducto,DESC', activo: 'true' });
+    const result = await API.get('/productos?' + params.toString());
+    const content = result.content || [];
+    all.push(...content);
+    if (page >= (result.totalPages || 1) - 1) break;
+    page++;
+  }
+  return all;
+}
+
+function getAtributosStr(p) {
+  const attrs = p.atributosAsignados || [];
+  if (attrs.length === 0) return '';
+  return attrs.map(a => (a.nombreAtributo || '') + ': ' + (a.nombreValor || '')).join(', ');
+}
+
+function buildInventoryRows(products, filterSucursalId) {
+  const rows = [];
+  for (const p of products) {
+    if (p.tieneVariantes) continue;
+    const atributos = getAtributosStr(p);
+    const invList = p.inventarioSucursales || [];
+    if (invList.length === 0) {
+      if (filterSucursalId) continue;
+      rows.push({
+        sku: p.sku || '', nombre: p.nombre || '', tipo: p.tieneVariantes ? 'Padre' : 'Simple',
+        sucursal: '', stock: p.stockActual || 0, stockMinimo: '', stockMaximo: '',
+        costoPromedio: p.costoPromedio || 0, costoTotal: (p.costoPromedio || 0) * (p.stockActual || 0),
+        estado: p.activo ? 'Activo' : 'Inactivo', atributos,
+      });
+    } else {
+      for (const inv of invList) {
+        if (filterSucursalId && inv.idSucursal != filterSucursalId) continue;
+        rows.push({
+          sku: p.sku || '', nombre: p.nombre || '', tipo: p.tieneVariantes ? 'Padre' : 'Simple',
+          sucursal: inv.sucursalNombre || '', stock: inv.stock || 0,
+          stockMinimo: inv.stockMinimo ?? '', stockMaximo: inv.stockMaximo ?? '',
+          costoPromedio: p.costoPromedio || 0, costoTotal: (p.costoPromedio || 0) * (inv.stock || 0),
+          estado: p.activo ? 'Activo' : 'Inactivo', atributos,
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function downloadCSV(headers, rows, filename) {
+  const csv = [headers.join(','), ...rows.map(r => r.map(v => '"' + (v ?? '') + '"').join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+async function exportarInventarioCSV() {
+  const sucursalId = document.getElementById('exportSucursalSelect')?.value || '';
+  const sucursalNombre = document.getElementById('exportSucursalSelect')?.selectedOptions?.[0]?.textContent || '';
+  Utils.showToast('Exportando inventario...', 'info');
+  try {
+    const products = await fetchAllProducts();
+    const rows = buildInventoryRows(products, sucursalId || null);
+    const headers = ['SKU', 'Nombre', 'Tipo', 'Sucursal', 'Stock', 'Stock Min', 'Stock Max', 'Costo Promedio', 'Costo Total', 'Atributos', 'Estado'];
+    if (sucursalId) {
+      const csvRows = rows.map(r => [r.sku, r.nombre, r.tipo, r.sucursal, r.stock, r.stockMinimo, r.stockMaximo, r.costoPromedio, r.costoTotal, r.atributos, r.estado]);
+      downloadCSV(headers, csvRows, 'inventario_' + sucursalNombre.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv');
+    } else {
+      const sucursalesMap = {};
+      for (const r of rows) {
+        const key = r.sucursal || 'Sin Sucursal';
+        if (!sucursalesMap[key]) sucursalesMap[key] = [];
+        sucursalesMap[key].push(r);
+      }
+      const allRows = [];
+      for (const [sucursal, items] of Object.entries(sucursalesMap)) {
+        allRows.push(['--- ' + sucursal + ' ---', '', '', '', '', '', '', '', '', '', '']);
+        for (const r of items) {
+          allRows.push([r.sku, r.nombre, r.tipo, r.sucursal, r.stock, r.stockMinimo, r.stockMaximo, r.costoPromedio, r.costoTotal, r.atributos, r.estado]);
+        }
+      }
+      downloadCSV(headers, allRows, 'inventario_total_' + new Date().toISOString().slice(0, 10) + '.csv');
+    }
+    Utils.showToast('Inventario exportado', 'success');
+  } catch (err) { Utils.showToast('Error al exportar: ' + err.message, 'error'); }
 }

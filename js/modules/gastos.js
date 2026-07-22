@@ -1,4 +1,4 @@
-let state = { data: [], cajas: [] };
+let state = { data: [], cajas: [], filtro: 'pendientes' };
 
 export function init() {
   bindEvents();
@@ -9,37 +9,41 @@ export function init() {
 function bindEvents() {
   document.getElementById('tableGastosBody')?.addEventListener('click', handleTableClick);
   document.getElementById('filtroCajaGasto')?.addEventListener('change', cargarGastos);
-  document.getElementById('btnVerPendientes')?.addEventListener('click', () => {
-    document.getElementById('filtroCajaGasto').value = '';
-    cargarGastosPendientes();
+  document.querySelectorAll('input[name="filtroGasto"]').forEach(r => {
+    r.addEventListener('change', e => {
+      state.filtro = e.target.value;
+      document.getElementById('filtroCajaGasto').value = '';
+      cargarGastos();
+    });
   });
 }
 
 async function cargarCajas() {
   try {
     state.cajas = await API.get('/cajas');
-    const sels = ['filtroCajaGasto', 'gastoCaja'];
-    sels.forEach(id => {
-      const sel = document.getElementById(id);
-      if (sel) {
-        sel.innerHTML = '<option value="">' + (id === 'filtroCajaGasto' ? 'Todas las cajas' : 'Seleccionar caja...') + '</option>' +
-          state.cajas.map(c => `<option value="${c.idCaja}">${Utils.esc(c.nombre)}</option>`).join('');
-        if (id === 'gastoCaja') Utils.makeSearchableSelect('gastoCaja');
-      }
-    });
+    const sel = document.getElementById('filtroCajaGasto');
+    if (sel) {
+      sel.innerHTML = '<option value="">Todas las cajas</option>' +
+        state.cajas.map(c => `<option value="${c.idCaja}">${Utils.esc(c.nombre)}</option>`).join('');
+    }
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
 async function cargarGastos() {
+  const cajaId = document.getElementById('filtroCajaGasto')?.value;
   try {
-    const cajaId = document.getElementById('filtroCajaGasto')?.value;
-    state.data = cajaId ? await API.get('/gastos/caja/' + cajaId) : await API.get('/gastos/caja/0');
-    // If no filter, get pendientes
-    if (!cajaId) {
-      try {
-        state.data = await API.get('/gastos/pendientes');
-      } catch (_) {
-        state.data = [];
+    if (cajaId) {
+      state.data = await API.get('/gastos/caja/' + cajaId);
+    } else if (state.filtro === 'pendientes') {
+      state.data = await API.get('/gastos/pendientes');
+    } else {
+      const all = await API.get('/gastos/todos');
+      if (state.filtro === 'autorizados') {
+        state.data = all.filter(g => g.estado === 'AUTORIZADO');
+      } else if (state.filtro === 'rechazados') {
+        state.data = all.filter(g => g.estado === 'RECHAZADO');
+      } else {
+        state.data = all;
       }
     }
     renderTable();
@@ -47,13 +51,6 @@ async function cargarGastos() {
     state.data = [];
     renderTable();
   }
-}
-
-async function cargarGastosPendientes() {
-  try {
-    state.data = await API.get('/gastos/pendientes');
-    renderTable();
-  } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
 function renderTable() {
@@ -100,7 +97,7 @@ function handleTableClick(e) {
 }
 
 async function confirmarAccion(id, accion) {
-  const msg = accion === 'autorizar' ? '¿Autorizar este gasto?' : '¿Rechazar este gasto?';
+  const msg = accion === 'autorizar' ? '\u00bfAutorizar este gasto?' : '\u00bfRechazar este gasto?';
   const confirmed = await Utils.confirmAction(msg, 'Confirmar', accion === 'autorizar' ? 'Autorizar' : 'Rechazar');
   if (!confirmed) return;
   try {

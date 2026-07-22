@@ -10,9 +10,16 @@
     <select class="form-select" id="filtroCajaGasto" style="min-width:220px">
       <option value="">Todas las cajas</option>
     </select>
-    <button class="btn btn-outline-warning ripple" id="btnVerPendientes">
-      <i class="fas fa-clock me-1"></i> Pendientes
-    </button>
+    <div class="btn-group" role="group">
+      <input type="radio" class="btn-check" name="filtroGasto" id="filtroGastoPendientes" value="pendientes" checked>
+      <label class="btn btn-outline-warning btn-sm" for="filtroGastoPendientes"><i class="fas fa-clock me-1"></i> Pendientes</label>
+      <input type="radio" class="btn-check" name="filtroGasto" id="filtroGastoAutorizados" value="autorizados">
+      <label class="btn btn-outline-success btn-sm" for="filtroGastoAutorizados"><i class="fas fa-check me-1"></i> Autorizados</label>
+      <input type="radio" class="btn-check" name="filtroGasto" id="filtroGastoRechazados" value="rechazados">
+      <label class="btn btn-outline-danger btn-sm" for="filtroGastoRechazados"><i class="fas fa-times me-1"></i> Rechazados</label>
+      <input type="radio" class="btn-check" name="filtroGasto" id="filtroGastoTodos" value="todos">
+      <label class="btn btn-outline-secondary btn-sm" for="filtroGastoTodos"><i class="fas fa-list me-1"></i> Todos</label>
+    </div>
   </div>
 
   <div class="panel-card overflow-hidden">

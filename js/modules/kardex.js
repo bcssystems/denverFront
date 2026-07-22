@@ -6,14 +6,22 @@ let state = {
   filterFechaInicio: '',
   filterFechaFin: '',
   filterTipo: '',
+  filterSucursal: '',
 };
 
 export function init() {
   bindEvents();
+  cargarSucursales();
   cargarMovimientos(0);
 }
 
 function bindEvents() {
+  document.getElementById('filterKardexSucursal')?.addEventListener('change', e => {
+    state.filterSucursal = e.target.value;
+    state.currentPage = 0;
+    cargarMovimientos(0);
+  });
+
   document.getElementById('filterKardexFechaInicio')?.addEventListener('change', e => {
     state.filterFechaInicio = e.target.value;
     state.currentPage = 0;
@@ -35,6 +43,17 @@ function bindEvents() {
   document.getElementById('btnExportarKardex')?.addEventListener('click', exportarCSV);
 }
 
+async function cargarSucursales() {
+  try {
+    const sucursales = await API.get('/sucursales');
+    const sel = document.getElementById('filterKardexSucursal');
+    if (sel) {
+      sel.innerHTML = '<option value="">Todas</option>' +
+        sucursales.map(s => '<option value="' + s.idSucursal + '">' + Utils.esc(s.nombre) + '</option>').join('');
+    }
+  } catch (_) {}
+}
+
 async function cargarMovimientos(page) {
   state.currentPage = page;
   const params = new URLSearchParams();
@@ -44,6 +63,7 @@ async function cargarMovimientos(page) {
   if (state.filterFechaInicio) params.set('fechaInicio', state.filterFechaInicio + 'T00:00:00');
   if (state.filterFechaFin) params.set('fechaFin', state.filterFechaFin + 'T23:59:59');
   if (state.filterTipo) params.set('tipo', state.filterTipo);
+  if (state.filterSucursal) params.set('idSucursal', state.filterSucursal);
 
   try {
     const result = await API.get('/kardex/todo?' + params.toString());

@@ -1,5 +1,5 @@
 const API = {
-  baseUrl: 'http://localhost:8080/api/v1',
+  baseUrl: '/api/v1',
   _mediaBaseUrl: undefined,
   get mediaBaseUrl() {
     if (this._mediaBaseUrl !== undefined) return this._mediaBaseUrl;

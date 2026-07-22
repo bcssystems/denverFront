@@ -7,18 +7,29 @@
   </div>
 
   <div class="panel-card p-3 mb-3">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-6">
+    <div class="d-flex gap-2 align-items-end flex-wrap">
+      <div class="flex-grow-1" style="min-width:200px">
         <label class="form-label small">Buscar Cliente</label>
         <input type="text" class="form-control form-control-sm" id="searchCreditoCliente" placeholder="Buscar cliente con cr&eacute;dito...">
       </div>
-      <div class="col-md-4">
+      <div>
+        <label class="form-label small">Filtro</label>
+        <div class="btn-group" role="group">
+          <input type="radio" class="btn-check" name="filtroCredito" id="filtroCredPendientes" value="pendientes" checked>
+          <label class="btn btn-outline-warning btn-sm" for="filtroCredPendientes">Pendientes</label>
+          <input type="radio" class="btn-check" name="filtroCredito" id="filtroCredLiquidados" value="liquidados">
+          <label class="btn btn-outline-success btn-sm" for="filtroCredLiquidados">Liquidados</label>
+          <input type="radio" class="btn-check" name="filtroCredito" id="filtroCredTodos" value="todos">
+          <label class="btn btn-outline-secondary btn-sm" for="filtroCredTodos">Todos</label>
+        </div>
+      </div>
+      <div>
         <label class="form-label small">&nbsp;</label>
-        <div class="d-flex gap-2">
-          <button class="btn btn-primary btn-sm ripple px-4" id="btnBuscarCreditoCliente">
+        <div class="d-flex gap-1">
+          <button class="btn btn-primary btn-sm ripple px-3" id="btnBuscarCreditoCliente">
             <i class="fas fa-search me-1"></i> Buscar
           </button>
-          <button class="btn btn-outline-secondary btn-sm ripple px-4" id="btnLimpiarCreditoCliente">
+          <button class="btn btn-outline-secondary btn-sm ripple px-3" id="btnLimpiarCreditoCliente">
             <i class="fas fa-undo me-1"></i> Limpiar
           </button>
         </div>
