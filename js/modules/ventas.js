@@ -14,6 +14,7 @@ let state = {
   lastCortePreview: null,
   reservas: [],
   gastosPendientes: 0,
+  idCotizacionActiva: null,
 };
 
 const REGIMENES_FISCALES = [
@@ -227,6 +228,83 @@ async function cargarProductosParaVenta() {
   } catch (_) { state.productos = []; }
 }
 
+async function cargarCotizacionDesdeLocalStorage() {
+  try {
+    const raw = localStorage.getItem('cotizacionParaVenta');
+    if (!raw) return;
+    const quote = JSON.parse(raw);
+    localStorage.removeItem('cotizacionParaVenta');
+    state.idCotizacionActiva = quote.idCotizacion || null;
+
+    if (quote.precioSeleccionado) {
+      const sel = document.getElementById('precioSelector');
+      if (sel) sel.value = quote.precioSeleccionado;
+    }
+
+    if (quote.idCliente) {
+      const sel = document.getElementById('posCliente');
+      if (sel) sel.value = quote.idCliente;
+    }
+
+    if (quote.detalles && quote.detalles.length > 0) {
+      for (const d of quote.detalles) {
+        const existente = state.cart.find(x => x.idProducto === d.idProducto);
+        if (existente) {
+          try {
+            await API.put('/carrito/actualizar', {
+              idCaja: state.caja.idCaja,
+              idProducto: d.idProducto,
+              cantidad: existente.cantidad + d.cantidad,
+            });
+            existente.cantidad += d.cantidad;
+          } catch (_) {}
+        } else {
+          try {
+            await API.post('/carrito/agregar', {
+              idCaja: state.caja.idCaja,
+              idProducto: d.idProducto,
+              cantidad: d.cantidad,
+            });
+          } catch (_) {}
+          const producto = state.productos.find(p => p.idProducto === d.idProducto);
+          state.cart.push({
+            idProducto: d.idProducto,
+            nombre: producto ? producto.nombre : d.productoNombre || 'Producto',
+            sku: producto ? producto.sku : d.productoSku || '',
+            cantidad: d.cantidad,
+            precioUnitario: d.precioUnitario,
+            stockActual: producto ? getStockSucursal(producto) : 0,
+            atributos: producto ? (producto.atributos || []) : [],
+          });
+        }
+      }
+    }
+
+    if (quote.cobraEnvio && quote.montoEnvio > 0) {
+      const envioExistente = state.cart.find(x => x.sku === 'ENVIO');
+      if (envioExistente) {
+        envioExistente.precioUnitario = quote.montoEnvio;
+      } else {
+        state.cart.push({
+          idProducto: null,
+          nombre: 'Env\u00edo' + (quote.paqueteria ? ' - ' + quote.paqueteria : ''),
+          sku: 'ENVIO',
+          cantidad: 1,
+          precioUnitario: quote.montoEnvio,
+          stockActual: 0,
+          atributos: [],
+          descripcion: 'Env\u00edo' + (quote.paqueteria ? ' - ' + quote.paqueteria : ''),
+        });
+      }
+    }
+
+    renderCart();
+    if (quote.detalles && quote.detalles.length > 0) {
+      Utils.showToast('Cotizaci\u00f3n #' + (quote.idCotizacion || '') + ' cargada en el carrito', 'success');
+    }
+  } catch (_) {}
+}
+
 async function iniciarPOS() {
   document.getElementById('pos-caja-selector').classList.add('d-none');
   document.getElementById('pos-interface').classList.remove('d-none');
@@ -241,6 +319,7 @@ async function iniciarPOS() {
   await cargarProductosParaVenta();
   await cargarReservasSucursal();
   await sincronizarCarritoDesdeServidor();
+  await cargarCotizacionDesdeLocalStorage();
   await verificarGastosPendientes();
   cargarEsperas();
   iniciarPollingCaja();
@@ -354,10 +433,11 @@ function iniciarPollingCaja() {
       if (list) buscarProductos();
     }
     const reservasCaja = state.reservas.filter(r => r.idCaja === state.caja.idCaja);
-    const cartServerCount = state.cart.filter(d => d.sku !== 'VR').length;
+    const cartServerCount = state.cart.filter(d => d.sku !== 'VR' && d.sku !== 'ENVIO').length;
     if (reservasCaja.length !== cartServerCount) {
       const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
       const precioKey = 'precio' + precioIdx;
+      const envioItems = state.cart.filter(d => d.sku === 'ENVIO');
       const nuevosCart = reservasCaja.map(r => {
         const existente = state.cart.find(d => d.idProducto === r.idProducto);
         if (existente) return { ...existente, cantidad: r.cantidad };
@@ -371,7 +451,7 @@ function iniciarPollingCaja() {
           atributos: prod ? (prod.atributos || []) : [],
         };
       });
-      state.cart = nuevosCart;
+      state.cart = [...envioItems, ...nuevosCart];
     }
     try {
       const rapidos = await API.get('/carrito/rapidos/' + state.caja.idCaja);
@@ -640,6 +720,11 @@ function renderCart() {
           renderCart();
           return;
         }
+        if (item.sku === 'ENVIO') {
+          state.cart.splice(i, 1);
+          renderCart();
+          return;
+        }
         if (item.cantidad > 1) {
           try {
             await API.put('/carrito/actualizar', {
@@ -670,6 +755,11 @@ function renderCart() {
           renderCart();
           return;
         }
+        if (item.sku === 'ENVIO') {
+          state.cart.splice(i, 1);
+          renderCart();
+          return;
+        }
         if (p && item.cantidad >= getStockSucursal(p)) {
           Utils.showToast('Stock insuficiente en esta sucursal', 'warning');
           return;
@@ -694,6 +784,8 @@ function renderCart() {
           if (item._idRapido) {
             try { await API.del('/carrito/rapidos/' + item._idRapido); } catch (_) {}
           }
+        } else if (item.sku === 'ENVIO') {
+          // ENVIO items are local-only, no server API needed
         } else if (state.caja?.idCaja) {
           try {
             await API.del('/carrito/quitar/' + item.idProducto + '?idCaja=' + state.caja.idCaja);
@@ -754,6 +846,7 @@ async function cobrarVenta() {
   if (state.cart.length === 0) { Utils.showToast('Agrega productos a la venta', 'warning'); return; }
 
   for (const d of state.cart) {
+    if (d.sku === 'ENVIO' || d.sku === 'VR') continue;
     const p = state.productos.find(x => x.idProducto === d.idProducto);
     if (p && getStockSucursal(p) < d.cantidad) {
       Utils.showToast('Stock insuficiente en esta sucursal: ' + d.nombre, 'error');
@@ -902,12 +995,12 @@ async function confirmarCobro() {
     total: total,
     nota: nota,
     detalles: state.cart.map(d => ({
-      idProducto: d.idProducto,
-      descripcion: null,
+      idProducto: d.sku === 'ENVIO' ? null : d.idProducto,
+      descripcion: d.sku === 'ENVIO' ? (d.descripcion || d.nombre) : null,
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
-      atributosText: d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null,
+      atributosText: d.sku === 'ENVIO' ? null : (d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null),
     })),
     pagos: pagos,
   };
@@ -924,6 +1017,12 @@ async function confirmarCobro() {
     await refreshCaja();
     await cargarEsperas();
     imprimirTicketVenta(ventaCreada);
+    if (state.idCotizacionActiva) {
+      try {
+        await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir');
+      } catch (_) {}
+      state.idCotizacionActiva = null;
+    }
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
@@ -960,12 +1059,12 @@ async function confirmarCreditoPOS() {
     plazoMeses: plazoMeses,
     porcentajeInteres: porcentajeInteres,
     detalles: state.cart.map(d => ({
-      idProducto: d.idProducto,
-      descripcion: null,
+      idProducto: d.sku === 'ENVIO' ? null : d.idProducto,
+      descripcion: d.sku === 'ENVIO' ? (d.descripcion || d.nombre) : null,
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
       subtotal: d.cantidad * d.precioUnitario,
-      atributosText: d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null,
+      atributosText: d.sku === 'ENVIO' ? null : (d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null),
     })),
     pagos: [],
   };
@@ -983,6 +1082,12 @@ async function confirmarCreditoPOS() {
     await refreshCaja();
     await cargarEsperas();
     imprimirTicketVenta(ventaCreada, 2, true, plazoMeses, porcentajeInteres, cInfo);
+    if (state.idCotizacionActiva) {
+      try {
+        await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir');
+      } catch (_) {}
+      state.idCotizacionActiva = null;
+    }
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
