@@ -53,7 +53,6 @@ const Auth = {
       localStorage.setItem('username', response.usuario);
       localStorage.setItem('userNombre', response.nombre);
       localStorage.setItem('userRol', response.rol);
-
       Utils.showToast('Inicio de sesión exitoso', 'success');
       this.checkAuthStatus();
     } catch (err) {

@@ -48,7 +48,28 @@ const Dashboard = {
     const avatar = document.getElementById('topbar-avatar');
     if (avatar) avatar.textContent = (localStorage.getItem('username') || 'U').charAt(0).toUpperCase();
 
+    this.filtrarSidebar();
     this.bindEvents();
+  },
+
+  filtrarSidebar() {
+    const links = document.querySelectorAll('.sidebar-item[data-permiso]');
+    links.forEach(link => {
+      const permiso = link.dataset.permiso;
+      if (permiso && !Utils.hasPermiso(permiso)) {
+        const li = link.closest('li');
+        if (li) li.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('ul.sidebar-submenu').forEach(sub => {
+      const hasVisible = Array.from(sub.children).some(li => li.style.display !== 'none');
+      if (!hasVisible) {
+        const toggle = document.querySelector('[data-target="' + sub.id + '"]');
+        const parentLi = toggle ? toggle.closest('li') : null;
+        if (parentLi) parentLi.style.display = 'none';
+      }
+    });
   },
 
   bindEvents() {
