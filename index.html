@@ -273,7 +273,7 @@
         </ul>
       </nav>
       <div class="sidebar-footer">
-        <small class="text-muted">v1.0.0</small>
+        <small class="text-muted" id="sidebar-version">v1.0.0</small>
       </div>
     </aside>
 
@@ -319,6 +319,19 @@
   <!-- SCRIPTS -->
   <script src="assets/bootstrap/js/bootstrap.bundle.min.js"></script>
   <script src="assets/fontawesome/js/all.min.js"></script>
+  <script src="js/version.js"></script>
+  <script>
+    document.querySelectorAll('link[rel="stylesheet"][href^="css/"]').forEach(function(l) {
+      if (typeof PAYLOAD_VERSION !== 'undefined') l.href = l.href.split('?')[0] + '?v=' + PAYLOAD_VERSION;
+    });
+    document.querySelectorAll('script[src^="js/"]').forEach(function(s) {
+      if (s.src.indexOf('version.js') === -1 && typeof PAYLOAD_VERSION !== 'undefined') {
+        s.src = s.src.split('?')[0] + '?v=' + PAYLOAD_VERSION;
+      }
+    });
+    var sidebarVer = document.getElementById('sidebar-version');
+    if (sidebarVer && typeof PAYLOAD_VERSION !== 'undefined') sidebarVer.textContent = 'v' + PAYLOAD_VERSION;
+  </script>
   <script src="js/api.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/dashboard.js"></script>

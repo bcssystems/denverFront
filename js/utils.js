@@ -76,7 +76,9 @@ const Utils = {
       document.body.style.removeProperty('overflow');
       document.body.style.removeProperty('padding-right');
 
-      const resp = await fetch(ruta);
+      const cacheV = (typeof PAYLOAD_VERSION !== 'undefined') ? '?v=' + PAYLOAD_VERSION : '';
+      const fetchUrl = ruta + (cacheV ? (ruta.includes('?') ? '&' : '?') + cacheV.replace('?', '') : '');
+      const resp = await fetch(fetchUrl);
       if (!resp.ok) throw new Error('Error al cargar la vista');
       const html = await resp.text();
       document.getElementById('main-content').innerHTML = html;
@@ -95,7 +97,7 @@ const Utils = {
           mainContent.dataset.currentModule = modulo;
         }
         try {
-          const module = await import('./modules/' + modulo + '.js');
+          const module = await import('./modules/' + modulo + '.js' + (cacheV ? cacheV : ''));
           if (module && typeof module.init === 'function') {
             module.init();
           }
