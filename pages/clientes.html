@@ -11,32 +11,45 @@
 
   <div class="filter-bar">
     <input type="text" class="form-control" id="searchCliente" placeholder="Buscar por nombre, tel&eacute;fono...">
+    <div class="form-check ms-2 mt-2">
+      <input type="checkbox" class="form-check-input" id="filtroListaNegra">
+      <label class="form-check-label small" for="filtroListaNegra">Solo lista negra</label>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm text-nowrap ms-2" id="btnToggleClientesInactivos">
+      <i class="fas fa-eye me-1"></i> Mostrar inactivos
+    </button>
   </div>
 
   <div class="panel-card overflow-hidden">
     <div class="table-responsive">
-      <table class="table table-custom mb-0">
+      <table class="table table-custom mb-0" style="white-space:nowrap;min-width:100%">
         <thead>
           <tr>
             <th>Nombre</th>
-            <th>Apellidos</th>
+            <th>Apellido</th>
             <th>Tel&eacute;fono</th>
             <th>Pa&iacute;s</th>
             <th>R&eacute;gimen Fiscal</th>
             <th>Direcci&oacute;n</th>
             <th>Cr&eacute;dito</th>
-            <th>Saldo Actual</th>
-            <th style="width:100px"></th>
+            <th>L&iacute;mite</th>
+            <th>Saldo</th>
+            <th>Lista negra</th>
+            <th>Motivo</th>
+            <th>Estado</th>
+            <th style="width:130px"></th>
           </tr>
         </thead>
         <tbody id="tableClientesBody">
-          <tr><td colspan="9"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
+          <tr><td colspan="13"><div class="empty-state"><i class="fas fa-address-book"></i><p>Cargando...</p></div></td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
   <div class="mt-3" id="paginationClientes"></div>
+
+  <input type="file" id="clienteIneFile" accept="image/*" class="d-none">
 </div>
 
 <div class="modal fade" id="clienteModal" tabindex="-1">
@@ -64,7 +77,12 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">Tel&eacute;fono <span class="text-danger">*</span></label>
-              <input type="text" class="form-control" id="clienteTelefono" required maxlength="30">
+              <div class="input-group">
+                <span class="input-group-text" id="clientePrefijo">+52</span>
+                <input type="text" class="form-control" id="clienteLada" placeholder="Lada" maxlength="3" style="max-width:80px" aria-label="Lada">
+                <input type="text" class="form-control" id="clienteTelefono" required maxlength="10" placeholder="N&uacute;mero" aria-label="N&uacute;mero">
+              </div>
+              <div class="form-text">Lada (3 d&iacute;gitos) + n&uacute;mero local</div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Pa&iacute;s</label>
@@ -81,6 +99,19 @@
             <div class="col-md-6">
               <label class="form-label">R&eacute;gimen Fiscal <span class="text-danger">*</span></label>
               <select class="form-select" id="clienteRegimen"></select>
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-md-6">
+              <label class="form-label">RFC</label>
+              <input type="text" class="form-control" id="clienteRfc" maxlength="13" placeholder="Persona moral: 12 car&aacute;cteres">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Contacto</label>
+              <input type="text" class="form-control" id="clienteRepresentanteLegal" maxlength="200">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Direcci&oacute;n de entrega</label>
+              <input type="text" class="form-control" id="clienteDireccionEntrega" maxlength="300">
             </div>
             <div class="col-12"><hr class="my-1"></div>
             <div class="col-md-2">
@@ -123,6 +154,12 @@
             <div class="col-md-3" id="clienteLimiteCreditoGroup" style="display:none">
               <label class="form-label">L&iacute;mite de Cr&eacute;dito</label>
               <input type="number" class="form-control" id="clienteLimiteCredito" step="0.01" min="0">
+            </div>
+            <div class="col-md-3" id="clienteCreditoIlimitadoGroup" style="display:none">
+              <div class="form-check mt-4">
+                <input type="checkbox" class="form-check-input" id="clienteCreditoIlimitado">
+                <label class="form-check-label small" for="clienteCreditoIlimitado">Sin l&iacute;mite (ilimitado)</label>
+              </div>
             </div>
           </div>
         </form>

@@ -8,6 +8,14 @@ let state = {
 export function init() {
   bindEvents();
   cargarSucursales();
+  const hoy = todayStr();
+  document.getElementById('filterDesde').value = hoy;
+  document.getElementById('filterHasta').value = hoy;
+  buscar(0);
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function bindEvents() {
@@ -29,10 +37,13 @@ function bindEvents() {
 }
 
 function handleTableClick(e) {
-  const btn = e.target.closest('.ver-corte-btn');
-  if (btn) {
-    const id = parseInt(btn.dataset.id);
-    verCorte(id);
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    const id = parseInt(kebab.dataset.id);
+    Utils.abrirMenuKebab(kebab, [
+      { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--info)', onClick: () => verCorte(id) },
+    ]);
+    return;
   }
 }
 
@@ -48,8 +59,8 @@ async function cargarSucursales() {
 function limpiar() {
   document.getElementById('filterSucursal').value = '';
   document.getElementById('filterCaja').innerHTML = '<option value="">Todas</option>';
-  document.getElementById('filterDesde').value = '';
-  document.getElementById('filterHasta').value = '';
+  document.getElementById('filterDesde').value = todayStr();
+  document.getElementById('filterHasta').value = todayStr();
   document.getElementById('tableBody').innerHTML = '<tr><td colspan="12"><div class="empty-state"><i class="fas fa-calculator"></i><p>Selecciona filtros y presiona Buscar</p></div></td></tr>';
   document.getElementById('pagination').innerHTML = '';
 }
@@ -95,7 +106,7 @@ async function buscar(page) {
         <td>${Utils.formatDateTime(c.fechaApertura)}</td>
         <td>${Utils.formatDateTime(c.fechaCierre)}</td>
         <td>${Utils.esc(c.usuario || '')}</td>
-        <td><button class="btn btn-sm btn-outline-primary ver-corte-btn" data-id="${c.idCorte}" title="Ver detalle"><i class="fas fa-eye"></i></button></td>
+        <td><button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${c.idCorte}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button></td>
       </tr>`).join('');
     }
 
@@ -134,6 +145,9 @@ async function verCorte(id) {
             <tr><td class="text-muted">Cr\u00e9dito</td><td class="fw-semibold text-end">$${(corte.totalVentasCredito || 0).toFixed(2)}</td></tr>
             <tr><td class="text-muted">Ingresos</td><td class="text-success fw-semibold text-end">+$${(corte.totalIngresos || 0).toFixed(2)}</td></tr>
             <tr><td class="text-muted">Egresos</td><td class="text-danger fw-semibold text-end">-$${(corte.totalEgresos || 0).toFixed(2)}</td></tr>
+            <tr><td class="text-muted">Gastos</td><td class="text-danger fw-semibold text-end">-$${(corte.totalGastos || 0).toFixed(2)}</td></tr>
+            <tr><td class="text-muted">Abonos (Cr\u00e9ditos)</td><td class="fw-semibold text-end" style="color:var(--info)">+$${(corte.totalAbonos || 0).toFixed(2)}</td></tr>
+            <tr><td class="text-muted">Saldo Esperado</td><td class="fw-semibold text-end">${corte.saldoEsperado != null ? '$' + corte.saldoEsperado.toFixed(2) : '-'}</td></tr>
             <tr class="border-top"><td class="fw-bold">Saldo Final</td><td class="fw-bold text-end" style="color:var(--primary)">$${(corte.saldoFinalContado || 0).toFixed(2)}</td></tr>
           </table>
         </div>
@@ -180,6 +194,35 @@ async function verCorte(id) {
           ` : '<p class="text-muted small mb-0">Sin desglose de pagos</p>'}
         </div>
       </div>
+      ${corte.abonos && corte.abonos.length > 0 ? `
+      <div class="col-12">
+        <div class="panel-card p-3">
+          <h6 class="fw-semibold mb-2"><i class="fas fa-hand-holding-dollar me-1" style="color:var(--info)"></i> Abonos por Cr\u00e9dito <span class="text-muted small">(${corte.abonos.length})</span></h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-custom mb-0">
+              <thead>
+                <tr>
+                  <th>Folio Cr\u00e9dito</th>
+                  <th>Cliente</th>
+                  <th>Fecha</th>
+                  <th>Tipo Pago</th>
+                  <th class="text-end">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${corte.abonos.map(a => `
+                <tr>
+                  <td>${a.folioCredito ? Utils.esc(a.folioCredito) : '<span class="text-muted">-</span>'}</td>
+                  <td>${Utils.esc(a.cliente || '')}</td>
+                  <td>${Utils.formatDateTime(a.fecha)}</td>
+                  <td>${Utils.esc(a.tipoPago || '')}</td>
+                  <td class="text-end fw-semibold">$${(a.monto || 0).toFixed(2)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>` : ''}
     `;
 
     new bootstrap.Modal(document.getElementById('corteDetailModal')).show();
@@ -275,6 +318,9 @@ function reimprimirCorte() {
     <tr><td style="padding-left:20px">Ventas Cr\u00e9dito</td><td>$${(corte.totalVentasCredito || 0).toFixed(2)}</td></tr>
     <tr><td>Total Ingresos</td><td style="color:#059669">+$${(corte.totalIngresos || 0).toFixed(2)}</td></tr>
     <tr><td>Total Egresos</td><td style="color:#dc2626">-$${(corte.totalEgresos || 0).toFixed(2)}</td></tr>
+    <tr><td>Total Gastos</td><td style="color:#dc2626">-$${(corte.totalGastos || 0).toFixed(2)}</td></tr>
+    <tr><td>Abonos (Cr\u00e9ditos)</td><td style="color:#0891b2">+$${(corte.totalAbonos || 0).toFixed(2)}</td></tr>
+    ${corte.saldoEsperado != null ? `<tr><td>Saldo Esperado</td><td>$${corte.saldoEsperado.toFixed(2)}</td></tr>` : ''}
     <tr class="total-row"><td>Saldo Final</td><td>$${(corte.saldoFinalContado || 0).toFixed(2)}</td></tr>
   </table>
   ${corte.detallePagos && corte.detallePagos.length > 0 ? `
@@ -304,6 +350,26 @@ function reimprimirCorte() {
       <td style="text-align:center;padding-top:6px">${corte.totalReal != null ? '$' + corte.totalReal.toFixed(2) : '-'}</td>
       <td style="text-align:center;padding-top:6px">${corte.diferencia != null ? ((corte.diferencia >= 0 ? '+' : '') + '$' + corte.diferencia.toFixed(2)) : '-'}</td>
     </tr>
+  </table>` : ''}
+  ${corte.abonos && corte.abonos.length > 0 ? `
+  <div class="divider"></div>
+  <div class="section-title">Abonos por Cr\u00e9dito</div>
+  <table class="data-table" style="font-size:11px">
+    <tr style="font-weight:bold;border-bottom:1px solid #000">
+      <td style="width:15%">Folio</td>
+      <td style="width:30%">Cliente</td>
+      <td style="width:25%">Fecha</td>
+      <td style="width:15%">Tipo Pago</td>
+      <td style="width:15%;text-align:center">Monto</td>
+    </tr>
+    ${corte.abonos.map(a => `
+    <tr>
+      <td>${Utils.esc(a.folioCredito || '-')}</td>
+      <td>${Utils.esc(a.cliente || '')}</td>
+      <td>${a.fecha ? new Date(a.fecha).toLocaleString('es-MX') : '-'}</td>
+      <td>${Utils.esc(a.tipoPago || '')}</td>
+      <td style="text-align:center">$${(a.monto || 0).toFixed(2)}</td>
+    </tr>`).join('')}
   </table>` : ''}
   <div class="footer">
     <p>--- Fin del Corte ---</p>

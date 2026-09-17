@@ -1,4 +1,4 @@
-let state = { data: [], currentPage: 0, totalPages: 0, pageSize: 10, editingId: null };
+let state = { data: [], currentPage: 0, totalPages: 0, pageSize: 10, editingId: null, verInactivas: false };
 let roles = [];
 let permisosPorModulo = {};
 
@@ -14,6 +14,12 @@ function bindEvents() {
   document.getElementById('tablePersonasBody')?.addEventListener('click', handleTableClick);
   document.getElementById('personaPermisosAdicionales')?.addEventListener('change', e => {
     if (e.target.classList.contains('permiso-modulo-check')) seleccionarModuloPermiso(e.target);
+  });
+  document.getElementById('btnTogglePersonasInactivas')?.addEventListener('click', () => {
+    state.verInactivas = !state.verInactivas;
+    const btn = document.getElementById('btnTogglePersonasInactivas');
+    if (btn) btn.innerHTML = state.verInactivas ? '<i class="fas fa-eye-slash me-1"></i> Mostrar activos' : '<i class="fas fa-eye me-1"></i> Mostrar inactivos';
+    cargarPersonas(0);
   });
 }
 
@@ -48,7 +54,8 @@ function permisosDelRol(idRol) {
 async function cargarPersonas(page) {
   state.currentPage = page;
   try {
-    const result = await API.get('/personas?page=' + page + '&size=' + state.pageSize + '&sort=idPersona,DESC');
+    const activaParam = state.verInactivas ? '' : '&activa=true';
+    const result = await API.get('/personas?page=' + page + '&size=' + state.pageSize + '&sort=idPersona,DESC' + activaParam);
     state.data = result.content;
     state.totalPages = result.totalPages;
     renderTable();
@@ -68,7 +75,7 @@ function renderTable() {
   tbody.innerHTML = state.data.map(p => `<tr class="${p.activa ? '' : 'inactive-row'}">
     <td>${Utils.esc(p.nombre)} ${Utils.esc(p.apellido)}</td>
     <td>${Utils.esc(p.usuario)}</td>
-    <td><span class="badge bg-primary-light text-primary">${Utils.esc(p.rol.nombre)}</span></td>
+    <td><span class="badge bg-primary-light text-primary">${p.rol && p.rol.nombre ? Utils.esc(p.rol.nombre) : '-'}</span></td>
     <td>${Utils.formatDate(p.fechaRegistro)}</td>
     <td><span class="badge-status ${p.activa ? 'badge-active' : 'badge-inactive'}">${p.activa ? 'Activo' : 'Inactivo'}</span></td>
     <td class="acciones-cell">
@@ -200,11 +207,11 @@ function abrirModal(id) {
       document.getElementById('personaNombre').value = p.nombre || '';
       document.getElementById('personaApellido').value = p.apellido || '';
       document.getElementById('personaUsuario').value = p.usuario || '';
-      document.getElementById('personaRol').value = p.rol.idRol;
+      document.getElementById('personaRol').value = p.rol && p.rol.idRol;
       Utils.updateSearchableOptions('personaRol');
       document.getElementById('personaPassword').required = false;
       document.getElementById('personaActiva').checked = p.activa !== false;
-      renderPermisosAdicionales(p.rol.idRol, p.permisosAdicionales || []);
+      renderPermisosAdicionales(p.rol ? p.rol.idRol : null, p.permisosAdicionales || []);
     }
   } else {
     document.getElementById('personaPassword').required = true;
@@ -237,6 +244,10 @@ async function guardarPersona() {
 
   if (!data.nombre || !data.apellido || !data.usuario) {
     Utils.showToast('Nombre, apellido y usuario son obligatorios', 'warning');
+    return;
+  }
+  if (!data.idRol) {
+    Utils.showToast('Selecciona un rol base', 'warning');
     return;
   }
   if (!state.editingId && !data.password) {

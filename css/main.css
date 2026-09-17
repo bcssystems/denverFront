@@ -457,6 +457,78 @@ body {
   white-space: nowrap;
 }
 
+/* ─── Kebab Menu ─── */
+.btn-kebab-toggle {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+}
+.btn-kebab-toggle:hover,
+.btn-kebab-toggle.show { color: var(--primary); background: var(--primary-light); }
+.acciones-kebab .dropdown-menu {
+  min-width: 200px;
+  font-size: 0.85rem;
+  box-shadow: 0 8px 24px rgba(30, 58, 95, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+}
+.acciones-kebab .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.acciones-kebab .dropdown-item i { width: 16px; text-align: center; }
+.acciones-kebab .dropdown-item:hover { background: var(--primary-light); color: var(--primary); }
+.acciones-kebab .dropdown-item.kebab-danger:hover { background: var(--danger-light); color: var(--danger); }
+
+.kebab-menu-float {
+  position: fixed;
+  z-index: 20000;
+  min-width: 170px;
+  max-width: 230px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(30, 58, 95, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transform: scale(0.98) translateY(-3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.kebab-menu-float.show {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+.kebab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #222;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kebab-menu-item:hover { background: var(--primary-light); color: var(--primary); }
+.kebab-menu-item i { width: 16px; text-align: center; font-size: 0.85rem; }
+.kebab-menu-item.kebab-danger:hover { background: var(--danger-light); color: var(--danger); }
+
 .badge-status {
   padding: 0.25rem 0.75rem;
   border-radius: 20px;
