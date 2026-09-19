@@ -1,3 +1,5 @@
+import { printRemisionVenta } from './printing.js';
+
 let state = {
   page: 0,
   totalPages: 0,
@@ -24,9 +26,21 @@ function bindEvents() {
     }
   });
   document.getElementById('tableBody')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-detalle]');
-    if (btn) verDetalle(parseInt(btn.dataset.detalle));
+    const kebab = e.target.closest('.kebab-trigger');
+    if (kebab) {
+      e.preventDefault();
+      abrirAccionesVenta(kebab, parseInt(kebab.dataset.id));
+      return;
+    }
   });
+}
+
+function abrirAccionesVenta(anchor, id) {
+  const items = [
+    { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
+    { icon: 'fa-print', text: 'Imprimir remisi\u00f3n', color: 'var(--success)', onClick: () => imprimirRemision(id) },
+  ];
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 async function cargarSucursales() {
@@ -86,15 +100,21 @@ async function buscar(page) {
         totalMonto += v.total || 0;
         if (v.estado === 'COMPLETADA') completadas++;
         else if (v.estado === 'CANCELADA') canceladas++;
+
+        const estadoBadge = v.estado === 'COMPLETADA' ? 'bg-success'
+          : v.estado === 'CANCELADA' ? 'bg-danger'
+          : v.estado === 'SOLICITADA_CANCELACION' ? 'bg-warning text-dark'
+          : 'bg-warning';
+
         return `<tr class="${v.estado === 'CANCELADA' ? 'text-muted' : ''}">
           <td>${v.idVenta}</td>
           <td>${Utils.esc(v.sucursalNombre || '')}</td>
           <td>${Utils.esc(v.cajaNombre || '')}</td>
           <td>${v.clienteNombre ? Utils.esc(v.clienteNombre) : 'Mostrador'}</td>
           <td class="fw-semibold">$${(v.total || 0).toFixed(2)}</td>
-          <td><span class="badge ${v.estado === 'COMPLETADA' ? 'bg-success' : v.estado === 'CANCELADA' ? 'bg-danger' : 'bg-warning'}">${v.estado}</span></td>
+          <td><span class="badge ${estadoBadge}">${v.estado}</span></td>
           <td>${Utils.formatDateTime(v.fecha)}</td>
-          <td><button class="btn btn-sm btn-outline-info" data-detalle="${v.idVenta}" title="Ver detalle"><i class="fas fa-eye"></i></button></td>
+          <td class="acciones-cell"><button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${v.idVenta}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button></td>
         </tr>`;
       }).join('');
 
@@ -143,6 +163,28 @@ function renderPagination() {
   });
 }
 
+async function imprimirRemision(id) {
+  try {
+    const venta = await API.get('/ventas/' + id);
+    imprimirTicket(venta);
+  } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function imprimirTicket(venta) {
+  let configs = {};
+  let clienteInfo = null;
+  (async () => {
+    try {
+      const list = await API.get('/configuraciones');
+      (list || []).forEach(c => { configs[c.clave] = c.valor; });
+    } catch (_) {}
+    if (venta.idCliente) {
+      try { clienteInfo = await API.get('/clientes/' + venta.idCliente); } catch (_) {}
+    }
+    printRemisionVenta(venta, { configs, clienteInfo, copies: 1 });
+  })();
+}
+
 async function verDetalle(id) {
   try {
     const venta = await API.get('/ventas/' + id);
@@ -155,6 +197,15 @@ async function verDetalle(id) {
       </tr>`
     ).join('');
 
+    const estadoBadge = venta.estado === 'COMPLETADA' ? 'bg-success'
+        : venta.estado === 'CANCELADA' ? 'bg-danger'
+        : venta.estado === 'SOLICITADA_CANCELACION' ? 'bg-warning text-dark'
+        : 'bg-warning';
+
+    const motivoHtml = (venta.motivoCancelacion && (venta.estado === 'SOLICITADA_CANCELACION' || venta.estado === 'CANCELADA'))
+      ? `<div class="col-12"><strong>Motivo de cancelaci\u00f3n:</strong> ${Utils.esc(venta.motivoCancelacion)}${venta.solicitanteCancelacion ? ' <small class="text-muted">(solicitado por ' + Utils.esc(venta.solicitanteCancelacion) + ')</small>' : ''}</div>`
+      : '';
+
     document.getElementById('detalleBody').innerHTML =
       `<div class="small mb-3 p-2 bg-light rounded">
         <div class="row g-2">
@@ -163,9 +214,16 @@ async function verDetalle(id) {
           <div class="col-4"><strong>Total:</strong> <span class="fw-bold" style="color:var(--primary)">$${(venta.total || 0).toFixed(2)}</span></div>
           <div class="col-4"><strong>Subtotal:</strong> $${(venta.subtotal || 0).toFixed(2)}</div>
           <div class="col-4"><strong>Descuento:</strong> $${(venta.descuento || 0).toFixed(2)}</div>
-          <div class="col-4"><strong>Estado:</strong> <span class="badge ${venta.estado === 'COMPLETADA' ? 'bg-success' : venta.estado === 'CANCELADA' ? 'bg-danger' : 'bg-warning'}">${venta.estado}</span></div>
-        </div>
-      </div>
+          <div class="col-4"><strong>Estado:</strong> <span class="badge ${estadoBadge}">${venta.estado}</span></div>
+          ${venta.tipoVenta === 'CREDITO'
+            ? `<div class="col-4"><strong>Pagar\u00e9:</strong> ${Utils.esc(venta.folioPagare || '—')}</div>
+               <div class="col-4"><strong>Inter\u00e9s:</strong> ${venta.porcentajeInteres || 0}%</div>
+               <div class="col-4"><strong>Plazo:</strong> ${venta.plazoMeses != null ? venta.plazoMeses + ' meses' : '—'}</div>`
+            : ''}
+          ${(venta.pagos || []).length
+            ? `<div class="col-12"><strong>Forma de pago:</strong> ${venta.pagos.map(p => Utils.esc(p.tipoPagoNombre || '') + ' $' + (p.monto || 0).toFixed(2) + (p.referencia ? ' (' + Utils.esc(p.referencia) + ')' : '')).join(' &middot; ')}</div>`
+            : ''}
+          ${motivoHtml}
       <table class="table table-sm table-custom mb-0">
         <thead><tr><th>Producto</th><th>Cant</th><th>P/U</th><th>Subtotal</th></tr></thead>
         <tbody>${detallesHtml || '<tr><td colspan="4" class="text-muted">Sin detalles</td></tr>'}</tbody>

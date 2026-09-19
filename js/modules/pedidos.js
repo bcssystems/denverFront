@@ -114,10 +114,7 @@ function renderTable() {
       <td class="text-end">$${total.toFixed(2)}</td>
       <td>${Utils.formatDateTime(p.fechaCreacion)}</td>
       <td class="acciones-cell">
-        <button class="btn-action btn-action-view" data-id="${p.idPedido}" data-action="view" title="Ver detalle"><i class="fas fa-eye"></i></button>
-        ${p.estado === 'PENDIENTE' || p.estado === 'PARCIAL' ? `<button class="btn-action btn-action-receive" data-id="${p.idPedido}" data-action="receive" title="Recibir"><i class="fas fa-truck-loading"></i></button>` : ''}
-        ${p.estado === 'PENDIENTE' ? `<button class="btn-action btn-action-cancel" data-id="${p.idPedido}" data-action="cancel" title="Cancelar"><i class="fas fa-times"></i></button>` : ''}
-        ${p.estado === 'PARCIAL' ? `<button class="btn-action btn-action-complete" data-id="${p.idPedido}" data-action="complete" title="Marcar como completado"><i class="fas fa-check"></i></button>` : ''}
+        <button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${p.idPedido}" data-estado="${p.estado}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button>
       </td>
     </tr>`;
   }).join('');
@@ -160,6 +157,12 @@ function renderPagination() {
 }
 
 function handleTableClick(e) {
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    e.preventDefault();
+    abrirAccionesPedido(kebab, parseInt(kebab.dataset.id));
+    return;
+  }
   const btn = e.target.closest('.btn-action');
   if (!btn) return;
   const id = parseInt(btn.dataset.id);
@@ -168,6 +171,23 @@ function handleTableClick(e) {
   else if (action === 'receive') abrirRecepcion(id);
   else if (action === 'cancel') cancelarPedido(id);
   else if (action === 'complete') completarPedido(id);
+}
+
+function abrirAccionesPedido(anchor, id) {
+  const estado = anchor.dataset.estado;
+  const items = [
+    { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
+    ...(estado === 'PENDIENTE' || estado === 'PARCIAL' ? [
+      { icon: 'fa-truck-loading', text: 'Recibir', color: 'var(--success)', onClick: () => abrirRecepcion(id) },
+    ] : []),
+    ...(estado === 'PARCIAL' ? [
+      { icon: 'fa-check', text: 'Completar', color: 'var(--warning)', onClick: () => completarPedido(id) },
+    ] : []),
+    ...(estado === 'PENDIENTE' ? [
+      { danger: true, icon: 'fa-times', text: 'Cancelar', onClick: () => cancelarPedido(id) },
+    ] : []),
+  ];
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 async function verDetalle(id) {

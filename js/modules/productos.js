@@ -14,6 +14,11 @@ let state = {
   editingVarianteIdx: null,
   atributos: [],
   showInactive: false,
+  movFullProductoId: null,
+  movFullFechaInicio: '',
+  movFullFechaFin: '',
+  movFullPage: 0,
+  movFullTotalPages: 0,
 };
 
 export function init() {
@@ -49,6 +54,29 @@ function bindEvents() {
   document.getElementById('btnAgregarVariante')?.addEventListener('click', () => abrirModalVariante());
   document.getElementById('btnGuardarVariante')?.addEventListener('click', guardarVariante);
   document.getElementById('btnToggleInactivos')?.addEventListener('click', toggleInactivos);
+
+  document.getElementById('btnVerInventario')?.addEventListener('click', () => {
+    if (state.currentProductoId) {
+      bootstrap.Modal.getInstance(document.getElementById('multimediaModal'))?.hide();
+      verInventario(state.currentProductoId);
+    }
+  });
+  document.getElementById('btnRegistrarMovimientoFull')?.addEventListener('click', () => {
+    state.currentProductoId = state.movFullProductoId;
+    abrirModalMovimiento();
+  });
+  document.getElementById('btnMovFullFiltrar')?.addEventListener('click', () => {
+    state.movFullFechaInicio = document.getElementById('movFullFechaInicio')?.value || '';
+    state.movFullFechaFin = document.getElementById('movFullFechaFin')?.value || '';
+    cargarMovimientosFull(0);
+  });
+  document.getElementById('btnMovFullLimpiar')?.addEventListener('click', () => {
+    if (document.getElementById('movFullFechaInicio')) document.getElementById('movFullFechaInicio').value = '';
+    if (document.getElementById('movFullFechaFin')) document.getElementById('movFullFechaFin').value = '';
+    state.movFullFechaInicio = '';
+    state.movFullFechaFin = '';
+    cargarMovimientosFull(0);
+  });
 
 }
 
@@ -210,10 +238,6 @@ function renderProductoNode(p, isParent) {
       ? '<span class="badge bg-secondary">Variante</span>'
       : '<span class="badge bg-light text-dark">Simple</span>';
 
-  const multimediaBtn = isParent
-    ? ''
-    : `<button class="btn-action btn-action-image" data-id="${id}" data-action="multimedia" title="Multimedia"><i class="fas fa-images"></i></button>`;
-
   const toggleBtn = isParent
     ? `<button type="button" class="producto-toggle" data-id="${id}" aria-expanded="false"><i class="fas fa-chevron-right"></i></button>`
     : '<span class="producto-spacer"></span>';
@@ -236,10 +260,7 @@ function renderProductoNode(p, isParent) {
       ${tipoLabel}
       <span class="badge-status ${p.activo ? 'badge-active' : 'badge-inactive'}">${p.activo ? 'Activo' : 'Inactivo'}</span>
       <div class="producto-actions">
-        ${multimediaBtn}
-        ${!p.activo ? `<button class="btn-action btn-action-reactivate" data-id="${id}" data-action="reactivate" title="Reactivar"><i class="fas fa-undo"></i></button>` : ''}
-        <button class="btn-action btn-action-edit" data-id="${id}" data-action="edit" title="Editar"><i class="fas fa-edit"></i></button>
-        <button class="btn-action btn-action-delete" data-id="${id}" data-action="delete" title="Eliminar"><i class="fas fa-trash"></i></button>
+        <button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${id}" data-action="menu" title="Acciones"><i class="fas fa-ellipsis-v"></i></button>
       </div>
     </div>
     ${childrenHtml}
@@ -300,14 +321,11 @@ function renderPagination() {
 }
 
 function handleTableClick(e) {
-  const btn = e.target.closest('.btn-action');
-  if (btn) {
-    const id = parseInt(btn.dataset.id);
-    const action = btn.dataset.action;
-    if (action === 'edit') abrirModal(id);
-    else if (action === 'delete') confirmarEliminar(id);
-    else if (action === 'reactivate') reactivarProducto(id);
-    else if (action === 'multimedia') verMultimedia(id);
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    e.preventDefault();
+    const id = parseInt(kebab.dataset.id);
+    abrirAccionesProducto(kebab, id);
     return;
   }
 
@@ -316,6 +334,23 @@ function handleTableClick(e) {
     const id = parseInt(img.dataset.id);
     verMultimedia(id);
   }
+}
+
+function abrirAccionesProducto(anchor, id) {
+  const p = (state.data || []).find(x => x.idProducto === id);
+  const items = [
+    { icon: 'fa-warehouse', text: 'Inventario y movimientos', color: 'var(--primary)', onClick: () => verInventario(id) },
+    { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
+  ];
+  if (p && !p.tieneVariantes) {
+    items.push({ icon: 'fa-images', text: 'Multimedia', color: 'var(--secondary)', onClick: () => verMultimedia(id) });
+  }
+  if (p && !p.activo) {
+    items.push({ icon: 'fa-undo', text: 'Reactivar', color: '#28a745', onClick: () => reactivarProducto(id) });
+  }
+  items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+  items.push({ danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) });
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 function toggleVariantesMode() {
@@ -1193,4 +1228,155 @@ async function exportarInventarioCSV() {
     }
     Utils.showToast('Inventario exportado', 'success');
   } catch (err) { Utils.showToast('Error al exportar: ' + err.message, 'error'); }
+}
+
+async function verInventario(id) {
+  state.currentProductoId = id;
+  await abrirMovimientosFull();
+}
+
+async function verDetalle(id) {
+  const modalEl = document.getElementById('productoDetalleModal');
+  if (!modalEl) return;
+
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  const body = document.getElementById('productoDetalleBody');
+  body.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin"></i></div>';
+  modal.show();
+
+  try {
+    const p = await API.get('/productos/' + id);
+    const unidad = (p.unidadMedida || 'UNIDAD').toLowerCase();
+    const imgUrl = p.multimedia && p.multimedia.length > 0
+      ? API.mediaBaseUrl + (p.multimedia.find(m => m.esPrincipal)?.url || p.multimedia[0].url)
+      : null;
+
+    const invHtml = (p.inventarioSucursales || []).map(i =>
+      `<tr>
+        <td>${Utils.esc(i.sucursalNombre)}</td>
+        <td class="fw-semibold">${i.stock} ${Utils.esc(unidad)}</td>
+        <td>${i.stockMinimo != null ? i.stockMinimo : '-'}</td>
+        <td>${i.stockMaximo != null ? i.stockMaximo : '-'}</td>
+      </tr>`
+    ).join('') || '<tr><td colspan="4" class="text-muted">Sin stock en sucursales</td></tr>';
+
+    body.innerHTML = `
+      <div class="row g-3">
+        <div class="col-md-4 text-center">
+          ${imgUrl ? `<img src="${Utils.esc(imgUrl)}" alt="${Utils.esc(p.nombre)}" style="max-width:100%;max-height:180px;border-radius:8px;object-fit:cover">` : '<div class="no-img mx-auto" style="width:120px;height:120px;font-size:2rem"><i class="fas fa-image"></i></div>'}
+          <div class="mt-2"><span class="${p.activo ? 'badge-active' : 'badge-inactive'}">${p.activo ? 'Activo' : 'Inactivo'}</span></div>
+        </div>
+        <div class="col-md-8">
+          <table class="table table-sm table-bordered mb-0">
+            <tbody>
+              <tr><th class="w-40">SKU</th><td>${Utils.esc(p.sku)}</td></tr>
+              <tr><th>Nombre</th><td>${Utils.esc(p.nombre)}</td></tr>
+              <tr><th>Categor&iacute;a</th><td>${Utils.esc(p.categoriaNombre || 'Sin categor&iacute;a')}</td></tr>
+              <tr><th>Descripci&oacute;n</th><td>${Utils.esc(p.descripcion || '\u2014')}</td></tr>
+              <tr><th>Precio base</th><td>$${(p.precioBase || 0).toFixed(2)}</td></tr>
+              <tr><th>Costo promedio</th><td>${p.costoPromedio != null ? '$' + p.costoPromedio.toFixed(2) : '\u2014'}</td></tr>
+              <tr><th>Unidad de medida</th><td>${Utils.esc(unidad)}</td></tr>
+              <tr><th>Metros por rollo</th><td>${p.metrosPorRollo != null ? p.metrosPorRollo : '\u2014'}</td></tr>
+              <tr><th>Stock global</th><td>${p.stockActual != null ? p.stockActual + ' ' + Utils.esc(unidad) : '\u2014'}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="col-12">
+          <h6 class="fw-semibold mt-2"><i class="fas fa-warehouse me-1"></i> Stock por Sucursal</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+              <thead><tr><th>Sucursal</th><th>Stock</th><th>M&iacute;nimo</th><th>M&aacute;ximo</th></tr></thead>
+              <tbody>${invHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  } catch (err) {
+    body.innerHTML = '<div class="text-center py-4 text-danger">Error al cargar el producto</div>';
+  }
+}
+
+async function abrirMovimientosFull() {
+  const modalEl = document.getElementById('movimientosFullModal');
+  if (!modalEl) return;
+  state.movFullProductoId = state.currentProductoId;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  if (document.getElementById('movFullFechaInicio')) document.getElementById('movFullFechaInicio').value = '';
+  if (document.getElementById('movFullFechaFin')) document.getElementById('movFullFechaFin').value = '';
+  state.movFullFechaInicio = '';
+  state.movFullFechaFin = '';
+  try {
+    const p = await API.get('/productos/' + state.movFullProductoId);
+    document.getElementById('movimientosFullProducto').textContent = '(' + p.nombre + ')';
+  } catch (_) {}
+  cargarMovimientosFull(0);
+  modal.show();
+}
+
+async function cargarMovimientosFull(page) {
+  state.movFullPage = page;
+  const params = new URLSearchParams();
+  params.set('page', page);
+  params.set('size', 15);
+  if (state.movFullFechaInicio) params.set('fechaInicio', state.movFullFechaInicio + 'T00:00:00');
+  if (state.movFullFechaFin) params.set('fechaFin', state.movFullFechaFin + 'T23:59:59');
+
+  const tbody = document.getElementById('movimientosFullBody');
+  const pag = document.getElementById('paginationMovimientosFull');
+  if (!tbody) return;
+
+  try {
+    const result = await API.get('/kardex?idProducto=' + state.movFullProductoId + '&' + params.toString());
+    const movs = result.content || [];
+    state.movFullTotalPages = result.totalPages || 0;
+
+    if (movs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Sin movimientos</td></tr>';
+    } else {
+      tbody.innerHTML = movs.map(m => {
+        const badgeClass = m.tipoMovimiento === 'ENTRADA' ? 'bg-success'
+          : m.tipoMovimiento === 'SALIDA' ? 'bg-danger'
+          : m.tipoMovimiento === 'AJUSTE' ? 'bg-warning text-dark'
+          : 'bg-info text-white';
+        return `<tr>
+          <td class="text-nowrap">${Utils.formatDateTime(m.fechaMovimiento)}</td>
+          <td><span class="badge ${badgeClass}">${Utils.esc(m.tipoMovimiento)}</span></td>
+          <td class="fw-semibold">${Utils.esc(m.productoNombre || '')}<br><small class="text-muted">${Utils.esc(m.productoSku || '')}</small></td>
+          <td>${m.cantidad != null ? m.cantidad : '-'}</td>
+          <td>${m.stockAnterior != null ? m.stockAnterior + ' \u2192 ' + m.stockNuevo : '-'}</td>
+          <td>${Utils.esc(m.sucursalNombre || 'Global')}</td>
+          <td>${Utils.esc(m.referencia || '\u2014')}</td>
+          <td>${Utils.esc(m.usuario || '\u2014')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    renderMovimientosFullPagination(pag);
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error al cargar movimientos</td></tr>';
+  }
+}
+
+function renderMovimientosFullPagination(container) {
+  if (!container) return;
+  if (state.movFullTotalPages <= 1) { container.innerHTML = ''; return; }
+  let html = '<nav><ul class="pagination pagination-sm justify-content-center mb-0">';
+  html += `<li class="page-item ${state.movFullPage === 0 ? 'disabled' : ''}"><a class="page-link" href="#" data-mf-page="${state.movFullPage - 1}"><i class="fas fa-chevron-left"></i></a></li>`;
+  for (let i = 0; i < state.movFullTotalPages; i++) {
+    if (i === 0 || i === state.movFullTotalPages - 1 || (i >= state.movFullPage - 2 && i <= state.movFullPage + 2)) {
+      html += `<li class="page-item ${i === state.movFullPage ? 'active' : ''}"><a class="page-link" href="#" data-mf-page="${i}">${i + 1}</a></li>`;
+    } else if (i === state.movFullPage - 3 || i === state.movFullPage + 3) {
+      html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+    }
+  }
+  html += `<li class="page-item ${state.movFullPage === state.movFullTotalPages - 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-mf-page="${state.movFullPage + 1}"><i class="fas fa-chevron-right"></i></a></li>`;
+  html += '</ul></nav>';
+  container.innerHTML = html;
+  container.querySelectorAll('[data-mf-page]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      const p = parseInt(el.dataset.mfPage);
+      if (p >= 0 && p < state.movFullTotalPages) cargarMovimientosFull(p);
+    });
+  });
 }

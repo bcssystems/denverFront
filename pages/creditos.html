@@ -65,7 +65,8 @@
     <div class="col-12">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0 fw-bold" id="creditoClienteName">-</h5>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
+          <span class="small text-muted">Deuda total: <strong id="creditosDeudaTotal" style="color:var(--danger)">$0.00</strong></span>
           <button class="btn btn-success btn-sm ripple" id="btnAbonarTodas">
             <i class="fas fa-money-bill-wave me-1"></i> Abonar a Todas
           </button>
@@ -126,6 +127,76 @@
   </div>
 </div>
 
+<div class="modal fade" id="estadoCuentaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="fas fa-file-invoice me-1" style="color:var(--primary)"></i> Estado de cuenta de <span id="estadoCuentaClienteName">-</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <div class="panel-card mb-0">
+          <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <h6 class="fw-semibold mb-0"><i class="fas fa-file-invoice me-1"></i> Movimientos</h6>
+            <div class="small">Deuda total: <strong id="estadoDeudaTotal" style="color:var(--danger)">$0.00</strong></div>
+          </div>
+          <div class="d-flex gap-3 small text-muted mb-2">
+            <span>Titular del pagar&eacute;: <strong id="estadoCuentaTitular">-</strong></span>
+            <span>Tasa de inter&eacute;s mora: <strong id="estadoCuentaTasaMora">-</strong></span>
+          </div>
+          <div class="table-responsive" style="max-height:320px">
+            <table class="table table-custom table-sm mb-0">
+              <thead>
+                <tr>
+                  <th style="width:11%">Folio</th>
+                  <th style="width:8%">Venta</th>
+                  <th style="width:16%">Fecha</th>
+                  <th>Tipo de movimiento</th>
+                  <th class="text-end" style="width:11%">Cantidad</th>
+                  <th style="width:11%">Pago</th>
+                  <th style="width:12%">Estado</th>
+                  <th class="text-end" style="width:12%">Lo que falta</th>
+                </tr>
+              </thead>
+              <tbody id="tableEstadoMovimientosBody">
+                <tr><td colspan="8"><div class="empty-state py-2"><i class="fas fa-file-invoice"></i><p>Sin movimientos</p></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel-card mb-0 mt-3">
+          <h6 class="fw-semibold mb-2"><i class="fas fa-money-bill-wave me-1" style="color:var(--info)"></i> Abonos registrados</h6>
+          <div class="table-responsive" style="max-height:180px">
+            <table class="table table-custom table-sm mb-0">
+              <thead>
+                <tr>
+                  <th>Pagar&eacute;</th>
+                  <th>Fecha</th>
+                  <th>M&eacute;todo de pago</th>
+                  <th class="text-end">Monto</th>
+                </tr>
+              </thead>
+              <tbody id="tableEstadoAbonosBody">
+                <tr><td colspan="4"><div class="empty-state py-2"><i class="fas fa-money-bill-wave"></i><p>Sin abonos registrados</p></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel-card mb-0 mt-3">
+          <h6 class="fw-semibold mb-2"><i class="fas fa-sticky-note me-1"></i> Notas de ventas</h6>
+          <div id="notasVentasList">
+            <p class="text-muted small mb-0">Sin notas de ventas</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-light btn-sm ripple" id="btnCerrarEstadoCuenta"><i class="fas fa-times me-1"></i> Cerrar</button>
+        <button class="btn btn-outline-primary btn-sm ripple" id="btnImprimirEstadoCuenta"><i class="fas fa-print me-1"></i> Imprimir Estado de Cuenta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="abonoModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-sm">
     <div class="modal-content border-0 shadow">
@@ -153,6 +224,10 @@
               <option value="PARCIAL">Abono Parcial</option>
               <option value="LIQUIDACION">Liquidaci&oacute;n Total</option>
             </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">M&eacute;todo de Pago <span class="text-danger">*</span></label>
+            <select class="form-select" id="abonoTipoPago" required></select>
           </div>
         </form>
       </div>
@@ -186,6 +261,10 @@
           <div class="mb-2">
             <label class="form-label">Monto a Abonar <span class="text-danger">*</span></label>
             <input type="number" class="form-control" id="abonoGeneralMonto" step="0.01" min="0.01" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">M&eacute;todo de Pago <span class="text-danger">*</span></label>
+            <select class="form-select" id="abonoGeneralTipoPago" required></select>
           </div>
           <small class="text-muted">El monto se distribuir&aacute; proporcionalmente entre todos los cr&eacute;ditos activos.</small>
         </form>

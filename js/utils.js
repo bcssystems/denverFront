@@ -400,4 +400,208 @@ const Utils = {
       }
     });
   },
+
+  abrirMenuKebab(anchor, items) {
+    this.cerrarMenuKebab();
+    if (!anchor || !anchor.getBoundingClientRect || !items || items.length === 0) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'kebab-menu-float';
+    menu.style.visibility = 'hidden';
+    document.body.appendChild(menu);
+
+    items.forEach(function (it) {
+      const el = document.createElement('div');
+      el.className = 'kebab-menu-item' + (it.danger ? ' kebab-danger' : '');
+      const colorStyle = it.color ? ' style="color:' + it.color + '"' : '';
+      el.innerHTML = '<i class="fas ' + it.icon + '"' + colorStyle + '></i><span>' + it.text + '</span>';
+      el.addEventListener('click', function (e) {
+        e.stopPropagation();
+        Utils.cerrarMenuKebab();
+        if (typeof it.onClick === 'function') it.onClick();
+      });
+      menu.appendChild(el);
+    });
+
+    const MENU_W = 210;
+    const menuH = menu.offsetHeight || (items.length * 34 + 10);
+    const r = anchor.getBoundingClientRect();
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+
+    let left = r.right - MENU_W;
+    if (left < 8) left = Math.max(8, r.left);
+    if (left + MENU_W > viewW - 8) left = viewW - MENU_W - 8;
+
+    let top = r.bottom + 4;
+    if (top + menuH > viewH - 8) top = r.top - menuH - 4;
+    if (top < 8) top = 8;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+    menu.style.visibility = 'visible';
+    menu.classList.add('show');
+
+    const close = function () {
+      if (menu.parentNode) menu.parentNode.removeChild(menu);
+      document.removeEventListener('click', onDoc, true);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize, true);
+    };
+    const onDoc = function (e) {
+      if (!menu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) close();
+    };
+    const onKey = function (e) {
+      if (e.key === 'Escape') close();
+    };
+    const onScroll = function () { close(); };
+    const onResize = function () { close(); };
+
+    document.addEventListener('click', onDoc, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize, true);
+  },
+
+  cerrarMenuKebab() {
+    const menu = document.querySelector('.kebab-menu-float');
+    if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+  },
+
+  initModalStacking() {
+    if (this._modalStackingInit) return;
+    this._modalStackingInit = true;
+
+    let zCounter = 1055;
+    const BASE_Z = 1055;
+
+    document.addEventListener('show.bs.modal', (e) => {
+      if (!e.target || typeof e.target.classList !== 'object' || !e.target.classList.contains('modal')) return;
+      zCounter += 10;
+      e.target.style.zIndex = String(zCounter);
+    });
+
+    document.addEventListener('shown.bs.modal', (e) => {
+      const modalEl = e.target;
+      if (!modalEl || typeof modalEl.classList !== 'object' || !modalEl.classList.contains('modal')) return;
+      const z = parseInt(modalEl.style.zIndex) || BASE_Z;
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      const b = backdrops[backdrops.length - 1];
+      if (b) {
+        modalEl._bsBackdropEl = b;
+        b.style.zIndex = String(z - 1);
+      }
+    });
+
+    document.addEventListener('hidden.bs.modal', (e) => {
+      const modalEl = e.target;
+      if (!modalEl) return;
+      if (modalEl._bsBackdropEl && modalEl._bsBackdropEl.style) modalEl._bsBackdropEl.style.zIndex = '';
+      modalEl._bsBackdropEl = null;
+    });
+  },
+
+  numeroALetras(value) {
+    if (value == null || isNaN(value)) return '';
+    const negativo = value < 0;
+    const entero = Math.trunc(Math.abs(value));
+    let dec = Math.round((Math.abs(value) - entero) * 100);
+    if (dec === 100) dec = 0;
+
+    const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+    const especiales = { 11: 'ONCE', 12: 'DOCE', 13: 'TRECE', 14: 'CATORCE', 15: 'QUINCE', 16: 'DIECIS\u00c9IS', 17: 'DIECISIETE', 18: 'DIECIOCHO', 19: 'DIECINUEVE' };
+    const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+    const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+    const decenaNum = (n) => {
+      if (n < 10) return unidades[n];
+      if (n < 20) return especiales[n] || 'DIEZ Y ' + unidades[n - 10];
+      if (n === 20) return 'VEINTE';
+      if (n < 30) return 'VEINTI' + unidades[n - 20];
+      const d = decenas[Math.floor(n / 10)];
+      const u = n % 10;
+      return u ? d + ' Y ' + unidades[u] : d;
+    };
+
+    const cientos = (n) => {
+      if (n === 0) return '';
+      if (n === 100) return 'CIEN';
+      const parts = [centenas[Math.floor(n / 100)]];
+      const r = n % 100;
+      if (r) parts.push(decenaNum(r));
+      return parts.join(' ');
+    };
+
+    const millones = Math.floor(entero / 1000000);
+    const miles = Math.floor((entero % 1000000) / 1000);
+    const rest = entero % 1000;
+
+    const partes = [];
+    if (millones === 1) partes.push('UN MILL\u00d3N');
+    else if (millones > 1) partes.push(cientos(millones) + ' MILLONES');
+    if (miles === 1) partes.push('MIL');
+    else if (miles > 1) partes.push(cientos(miles) + ' MIL');
+    if (rest) partes.push(cientos(rest));
+    const palabras = partes.length ? partes.join(' ') : 'CERO';
+
+    const centStr = String(dec).padStart(2, '0');
+    return (negativo ? 'MENOS ' : '') + palabras + ' PESOS ' + centStr + '/100 M.N.';
+  },
+
+  downloadXls(filename, sheetName, headers, rows) {
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const cell = (v) => {
+      const s = esc(v);
+      return '<ss:Cell><ss:Data ss:Type="String">' + s + '</ss:Data></ss:Cell>';
+    };
+    const headerCells = headers.map(h => '<ss:Cell><ss:Data ss:Type="String"><b>' + esc(h) + '</b></ss:Data></ss:Cell>').join('');
+    const bodyRows = rows.map(r =>
+      '<ss:Row>' + r.map(cell).join('') + '</ss:Row>'
+    ).join('\n');
+
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<?mso-application progid="Excel.Sheet"?>\n' +
+      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
+      ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
+      '<Worksheet ss:Name="' + esc(sheetName) + '">\n' +
+      '<Table>\n' +
+      '<ss:Row>' + headerCells + '</ss:Row>\n' +
+      bodyRows + '\n' +
+      '</Table>\n</Worksheet>\n</Workbook>';
+
+    const blob = new Blob(['\uFEFF' + xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+
+  openPrintWindow(title, bodyHtml) {
+    const win = window.open('', '_blank', 'width=760,height=700');
+    if (!win) {
+      this.showToast('Bloqueador de popups activo. Permite las ventanas emergentes.', 'warning');
+      return;
+    }
+    const html = '<html><head><meta charset="utf-8"><title>' + this.esc(title) + '</title>' +
+      '<style>' +
+      'body { font-family: Arial, sans-serif; font-size: 12px; color: #222; margin: 20px; }' +
+      'h2 { text-align: center; margin-bottom: 4px; }' +
+      'h4 { text-align: center; margin-bottom: 16px; font-weight: normal; color: #555; }' +
+      'table { width: 100%; border-collapse: collapse; margin-top: 8px; }' +
+      'th, td { border: 1px solid #888; padding: 4px 6px; font-size: 11px; }' +
+      'th { background: #eee; }' +
+      'tr.total td { font-weight: bold; }' +
+      '.right { text-align: right; }' +
+      '.center { text-align: center; }' +
+      '@media print { body { margin: 0; } }' +
+      '</style></head><body>' + bodyHtml + '</body></html>';
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 300);
+  },
 };
+
+document.addEventListener('DOMContentLoaded', () => { Utils.initModalStacking(); });
