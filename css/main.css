@@ -949,3 +949,33 @@ body {
 .permiso-item-base:hover { background-color: #e9ecef; }
 
 .permisos-cell { max-width: 280px; }
+
+/* ------- Widget captura INE ------- */
+.ine-cam-wrap {
+  position: relative;
+  background: #000;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ine-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ine-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.ine-cam-placeholder {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem;
+}

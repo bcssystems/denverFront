@@ -461,6 +461,7 @@ export function printRemisionVenta(venta, opts) {
     const pieHtml = esCredito
       ? `<div class="bottom-section pagare-footer">${pagareHtml}</div>`
       : `<div class="bottom-section"><div class="footer">
+      <div class="total">TOTAL: $${(venta.total || 0).toFixed(2)}</div>
       <strong>BONDS</strong> &mdash; Sistema de Administraci\u00f3n<br>
       Este documento es un comprobante interno de venta<br>
       ${fechaStr} ${horaStr}

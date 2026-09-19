@@ -13,12 +13,15 @@ let state = {
   posProductPanelOpen: false,
   reanudandoVentaId: null,
   esperaVentas: [],
+  activeEsperaTab: null,
   cancelarVentas: [],
   cancelarSelectedId: null,
   lastCortePreview: null,
   reservas: [],
   gastosPendientes: 0,
   idCotizacionActiva: null,
+  preciosClienteMap: {},
+  abonoPOSClienteId: null,
   configs: {},
 };
 
@@ -79,9 +82,7 @@ function bindEvents() {
 
   document.getElementById('btnCobrarPOS')?.addEventListener('click', cobrarVenta);
   document.getElementById('btnConfirmarCobroPOS')?.addEventListener('click', confirmarCobro);
-  document.getElementById('btnConfirmarCreditoPOS')?.addEventListener('click', confirmarCreditoPOS);
-  document.getElementById('posCreditoInteres')?.addEventListener('input', actualizarMontoOriginalCredito);
-  document.getElementById('posCreditoPlazo')?.addEventListener('change', actualizarMontoOriginalCredito);
+  document.getElementById('btnConfirmarAbonoPOS')?.addEventListener('click', confirmarAbonoPOS);
   document.getElementById('btnEsperaPOS')?.addEventListener('click', ponerEnEspera);
   document.getElementById('btnNuevoClientePOS')?.addEventListener('click', () => abrirClienteModal());
   document.getElementById('btnGuardarPosCliente')?.addEventListener('click', guardarClienteDesdePOS);
@@ -149,6 +150,8 @@ function bindEvents() {
     actualizarPreciosCart();
     recalcularTotales();
   });
+
+  document.getElementById('posCliente')?.addEventListener('change', onPosClienteChange);
 }
 
 async function mostrarSelectorCaja() {
@@ -332,6 +335,7 @@ async function iniciarPOS() {
   cargarEsperas();
   iniciarPollingCaja();
   actualizarCajaInfo();
+  abrirAbonoPOSDesdeLocalStorage();
 }
 
 function actualizarCajaInfo() {
@@ -551,6 +555,25 @@ function cargarRegimenes(selectId) {
   if (sel) {
     sel.innerHTML = '<option value="">Seleccionar...</option>' +
       REGIMENES_FISCALES.map(r => `<option value="${r.value}">${r.label}</option>`).join('');
+  }
+}
+
+async function onPosClienteChange() {
+  const id = parseInt(document.getElementById('posCliente').value) || null;
+  state.preciosClienteMap = {};
+  if (id) {
+    const cli = state.clientes.find(c => c.idCliente === id);
+    if (cli && cli.enListaNegra) {
+      Utils.showToast('Este cliente está en lista negra', 'warning');
+    }
+    try {
+      const precios = await API.get('/clientes/' + id + '/precios');
+      (precios || []).forEach(p => { state.preciosClienteMap[p.idProducto] = p.precio; });
+    } catch (_) {}
+  }
+  actualizarPreciosCart();
+  if (bootstrap.Modal.getInstance(document.getElementById('posCobroModal'))) {
+    cargarFormasPagoCobro();
   }
 }
 
@@ -890,31 +913,6 @@ async function cobrarVenta() {
   }
 
   const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
-  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
-
-  if (tipoVenta === 'CREDITO') {
-    const clienteId = parseInt(document.getElementById('posCliente').value) || null;
-    if (!clienteId) {
-      Utils.showToast('Selecciona un cliente para venta a cr\u00e9dito', 'warning');
-      return;
-    }
-    const cliente = state.clientes.find(c => c.idCliente === clienteId);
-    if (!cliente || !cliente.tieneCredito) {
-      Utils.showToast('El cliente no tiene cr\u00e9dito habilitado', 'warning');
-      return;
-    }
-    const disponible = (cliente.limiteCredito || 0) - (cliente.saldoActual || 0);
-    if (total > disponible) {
-      Utils.showToast('El total excede el l\u00edmite de cr\u00e9dito disponible ($' + disponible.toFixed(2) + ')', 'warning');
-      return;
-    }
-    document.getElementById('posCreditoTotal').textContent = '$' + total.toFixed(2);
-    document.getElementById('posCreditoClienteName').textContent = (cliente.nombre || '') + ' ' + (cliente.apellidoPaterno || '');
-    document.getElementById('posCreditoInteres').value = '0';
-    actualizarMontoOriginalCredito();
-    new bootstrap.Modal(document.getElementById('posCreditoModal')).show();
-    return;
-  }
 
   document.getElementById('posCobroTotal').textContent = '$' + total.toFixed(2);
   document.getElementById('posCobroNota').value = '';
@@ -935,7 +933,54 @@ async function cargarFormasPagoCobro() {
       return;
     }
 
-    container.innerHTML = tipos.map((t) => {
+    const clienteNombres = {
+      show: false,
+      value: null,
+    };
+    const clienteId = parseInt(document.getElementById('posCliente')?.value) || null;
+    if (clienteId) {
+      const cli = state.clientes.find(x => x.idCliente === clienteId);
+      if (cli) {
+        clienteNombres.value = (cli.nombre || '') + ' ' + (cli.apellidoPaterno || '');
+        if (cli.enListaNegra) {
+          Utils.showToast('Este cliente est\u00e1 en lista negra', 'warning');
+        }
+        if (!cli.tieneIne) {
+          clienteNombres.show = true;
+        }
+      }
+    }
+    const clienteCredito = clienteId ? state.clientes.find(x => x.idCliente === clienteId) : null;
+    const clienteFaltaIne = !!(clienteCredito && clienteCredito.tieneCredito && !clienteCredito.tieneIne);
+    const clienteHabilitaCredito = !!(clienteCredito && clienteCredito.tieneCredito && clienteCredito.tieneIne);
+    const clienteCreditoNombres = clienteCredito
+      ? Utils.esc((clienteCredito.nombre || '') + ' ' + (clienteCredito.apellidoPaterno || '')) + (clienteHabilitaCredito ? '' : (clienteFaltaIne ? ' <span class="text-danger">(falta INE)</span>' : ' <span class="text-danger">(sin cr\u00e9dito)</span>'))
+      : '<span class="text-muted">Selecciona un cliente en el POS</span>';
+    const creditosDisponibles = (clienteCredito?.limiteCredito || 0) - (clienteCredito?.saldoActual || 0);
+
+    const creditoHtml = `
+      <div class="payment-row payment-credito-row border rounded p-2 mb-1" style="background:rgba(13,110,253,.05)">
+        <div class="row g-2 align-items-center">
+          <div class="col-3">
+            <span class="fw-semibold small text-primary"><i class="fas fa-credit-card me-1"></i>CR\u00c9DITO</span>
+            <input type="hidden" class="payment-credito" value="1">
+          </div>
+          <div class="col-3">
+            <div class="input-group input-group-sm">
+              <input type="number" class="form-control payment-monto payment-credito-monto" data-credito="1" step="0.01" min="0" value="0.00" ${clienteHabilitaCredito ? '' : 'disabled'}>
+            </div>
+          </div>
+          <div class="col-6">
+            <small class="text-muted">Cliente: <strong>${clienteCreditoNombres}</strong><br>
+            ${clienteHabilitaCredito
+              ? `<span class="text-muted">Disponible: $${creditosDisponibles.toFixed(2)}</span>`
+              : `<span class="text-danger" style="font-size:0.7rem">${clienteFaltaIne ? 'El cliente debe tener INE registrada para usar cr\u00e9dito' : 'Selecciona un cliente con cr\u00e9dito habilitado'}</span>`}
+            </small>
+          </div>
+        </div>
+      </div>`;
+
+    const rows = tipos.map((t) => {
       const isEfectivo = t.nombre.toUpperCase() === 'EFECTIVO';
       return `<div class="payment-row border rounded p-2 mb-1">
         <div class="row g-2 align-items-center">
@@ -954,6 +999,15 @@ async function cargarFormasPagoCobro() {
         </div>
       </div>`;
     }).join('');
+
+    container.innerHTML = rows + creditoHtml;
+
+    if (clienteNombres.show) {
+      const faltaIne = document.createElement('div');
+      faltaIne.className = 'alert alert-warning py-1 px-2 small mb-2';
+      faltaIne.textContent = 'El cliente ' + clienteNombres.value + ' no cuenta con INE capturado';
+      container.prepend(faltaIne);
+    }
 
     container.addEventListener('input', recalcularSumaCobro);
 
@@ -994,20 +1048,88 @@ async function confirmarCobro() {
   const total = parseFloat(document.getElementById('posCobroTotal').textContent.replace('$', ''));
   const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
   const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
-  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
   const clienteId = parseInt(document.getElementById('posCliente').value) || null;
   const nota = document.getElementById('posCobroNota').value.trim() || null;
 
   const pagos = [];
+  let montoCredito = 0;
   document.querySelectorAll('.payment-monto').forEach(inp => {
     const monto = parseFloat(inp.value) || 0;
-    if (monto > 0) {
-      const idTipoPago = parseInt(inp.dataset.id);
-      const refInput = document.querySelector(`.payment-referencia[data-id="${idTipoPago}"]`);
-      const referencia = refInput ? refInput.value.trim() || null : null;
-      pagos.push({ idTipoPago, monto, referencia });
+    if (monto <= 0) return;
+    if (inp.dataset.credito) {
+      montoCredito += monto;
+      return;
     }
+    const idTipoPago = parseInt(inp.dataset.id);
+    const refInput = document.querySelector(`.payment-referencia[data-id="${idTipoPago}"]`);
+    const referencia = refInput ? refInput.value.trim() || null : null;
+    pagos.push({ idTipoPago, monto, referencia });
   });
+
+  if (montoCredito > 0) {
+    if (!clienteId) {
+      Utils.showToast('Selecciona un cliente en el POS para venta a cr\u00e9dito', 'warning');
+      return;
+    }
+    const cliente = state.clientes.find(c => c.idCliente === clienteId);
+    if (!cliente || !cliente.tieneCredito) {
+      Utils.showToast('El cliente seleccionado no tiene cr\u00e9dito habilitado', 'warning');
+      return;
+    }
+    if (!cliente.tieneIne) {
+      Utils.showToast('El cliente debe tener INE registrada para venta a cr\u00e9dito', 'warning');
+      return;
+    }
+    if (cliente.limiteCredito != null) {
+      const disp = cliente.limiteCredito - (cliente.saldoActual || 0);
+      if (total > disp) {
+        Utils.showToast('El total excede el l\u00edmite de cr\u00e9dito disponible ($' + disp.toFixed(2) + ')', 'warning');
+        return;
+      }
+    }
+    if (pagos.length > 0 && (pagos.reduce((s, p) => s + p.monto, 0) + montoCredito + 0.01) < total) {
+      Utils.showToast('La suma de los pagos debe ser al menos igual al total', 'warning');
+      return;
+    }
+
+    const request = {
+      idCaja: state.caja.idCaja,
+      idCliente: clienteId,
+      tipoVenta: 'CREDITO',
+      precioSeleccionado: precioIdx,
+      subtotal: subtotal,
+      descuento: subtotal - total,
+      total: total,
+      nota: nota,
+      plazoMeses: 1,
+      porcentajeInteres: 0,
+      detalles: state.cart.map(d => ({
+        idProducto: d.sku === 'ENVIO' ? null : d.idProducto,
+        descripcion: d.sku === 'ENVIO' ? (d.descripcion || d.nombre) : null,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario,
+        subtotal: d.cantidad * d.precioUnitario,
+        atributosText: d.sku === 'ENVIO' ? null : (d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null),
+      })),
+      pagos: [],
+    };
+
+    try {
+      await finalizarEsperaActiva();
+      const ventaCreada = await API.post('/ventas', request);
+      Utils.showToast('Venta a cr\u00e9dito registrada', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('posCobroModal'))?.hide();
+      await limpiarCart();
+      await refreshCaja();
+      await cargarEsperas();
+      imprimirTicketVenta(ventaCreada, 2, true, 1, 0, cliente);
+      if (state.idCotizacionActiva) {
+        try { await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir'); } catch (_) {}
+        state.idCotizacionActiva = null;
+      }
+    } catch (err) { Utils.showToast(err.message, 'error'); }
+    return;
+  }
 
   if (pagos.length === 0) {
     Utils.showToast('Selecciona al menos una forma de pago', 'warning');
@@ -1023,7 +1145,7 @@ async function confirmarCobro() {
   const request = {
     idCaja: state.caja.idCaja,
     idCliente: clienteId || null,
-    tipoVenta: tipoVenta,
+    tipoVenta: 'CONTADO',
     precioSeleccionado: precioIdx,
     subtotal: subtotal,
     descuento: subtotal - total,
@@ -1050,76 +1172,11 @@ async function confirmarCobro() {
     await cargarEsperas();
     imprimirTicketVenta(ventaCreada);
     if (state.idCotizacionActiva) {
-      try {
-        await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir');
-      } catch (_) {}
+      try { await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir'); } catch (_) {}
       state.idCotizacionActiva = null;
     }
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
-
-function actualizarMontoOriginalCredito() {
-  const total = parseFloat(document.getElementById('posCreditoTotal').textContent.replace('$', ''));
-  const interes = parseFloat(document.getElementById('posCreditoInteres').value) || 0;
-  const plazo = parseInt(document.getElementById('posCreditoPlazo').value) || 1;
-  const montoOriginal = total + (total * interes / 100);
-  const pagoMensual = montoOriginal / plazo;
-  document.getElementById('posCreditoMontoOriginal').textContent = '$' + montoOriginal.toFixed(2);
-  document.getElementById('posCreditoPagoMensual').textContent = '$' + pagoMensual.toFixed(2) + ' x ' + plazo + ' meses';
-}
-
-async function confirmarCreditoPOS() {
-  if (!state.caja) { Utils.showToast('No hay caja activa', 'error'); return; }
-
-  const total = parseFloat(document.getElementById('posCreditoTotal').textContent.replace('$', ''));
-  const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
-  const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
-  const clienteId = parseInt(document.getElementById('posCliente').value) || null;
-  const nota = document.getElementById('posCobroNota').value.trim() || null;
-  const plazoMeses = parseInt(document.getElementById('posCreditoPlazo').value);
-  const porcentajeInteres = parseFloat(document.getElementById('posCreditoInteres').value) || 0;
-
-  const request = {
-    idCaja: state.caja.idCaja,
-    idCliente: clienteId,
-    tipoVenta: 'CREDITO',
-    precioSeleccionado: precioIdx,
-    subtotal: subtotal,
-    descuento: subtotal - total,
-    total: total,
-    nota: nota,
-    plazoMeses: plazoMeses,
-    porcentajeInteres: porcentajeInteres,
-    detalles: state.cart.map(d => ({
-      idProducto: d.sku === 'ENVIO' ? null : d.idProducto,
-      descripcion: d.sku === 'ENVIO' ? (d.descripcion || d.nombre) : null,
-      cantidad: d.cantidad,
-      precioUnitario: d.precioUnitario,
-      subtotal: d.cantidad * d.precioUnitario,
-      atributosText: d.sku === 'ENVIO' ? null : (d.atributos?.map(a => a.nombreAtributo + ': ' + a.nombreValor).join(', ') || null),
-    })),
-    pagos: [],
-  };
-
-  try {
-    await finalizarEsperaActiva();
-    const ventaCreada = await API.post('/ventas', request);
-    Utils.showToast('Venta a cr\u00e9dito registrada', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('posCreditoModal'))?.hide();
-    const cInfo = state.clientes.find(c => c.idCliente === clienteId);
-    await limpiarCart();
-    await refreshCaja();
-    await cargarEsperas();
-    imprimirTicketVenta(ventaCreada, 2, true, plazoMeses, porcentajeInteres, cInfo);
-    if (state.idCotizacionActiva) {
-      try {
-        await API.post('/cotizaciones/' + state.idCotizacionActiva + '/convertir');
-      } catch (_) {}
-      state.idCotizacionActiva = null;
-    }
-  } catch (err) { Utils.showToast(err.message, 'error'); }
-}
-
 
 function imprimirTicketVenta(venta, copies, esCredito, plazoMeses, porcentajeInteres, clienteInfo) {
   printRemisionVenta(venta, {
@@ -1296,13 +1353,12 @@ async function ponerEnEspera() {
   const total = parseFloat(document.getElementById('posTotal').textContent.replace('$', ''));
   const subtotal = parseFloat(document.getElementById('posSubtotal').textContent.replace('$', ''));
   const precioIdx = parseInt(document.getElementById('precioSelector')?.value) || 1;
-  const tipoVenta = document.querySelector('input[name="tipoVenta"]:checked')?.value || 'CONTADO';
   const clienteId = parseInt(document.getElementById('posCliente').value) || null;
 
   const request = {
     idCaja: state.caja.idCaja,
     idCliente: clienteId || null,
-    tipoVenta: tipoVenta,
+    tipoVenta: 'CONTADO',
     precioSeleccionado: precioIdx,
     subtotal: subtotal,
     descuento: subtotal - total,
@@ -1334,6 +1390,79 @@ async function ingresarEfectivo() {
     document.getElementById('posIngresoMonto').value = '';
     document.getElementById('posIngresoMotivo').value = '';
     await refreshCaja();
+  } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function abrirAbonoPOSDesdeLocalStorage() {
+  if (!state.caja?.idCaja) return;
+  const raw = localStorage.getItem('abonoParaPOS');
+  if (!raw) return;
+  localStorage.removeItem('abonoParaPOS');
+  try {
+    const data = JSON.parse(raw);
+    abrirAbonoPOS(data);
+  } catch (_) {}
+}
+
+async function abrirAbonoPOS(data) {
+  state.abonoPOSClienteId = data?.idCliente || null;
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('abonoPOSModal'));
+  document.getElementById('abonoPOSClienteName').textContent = (data?.nombre || 'Cliente');
+  document.getElementById('abonoPOSMonto').value = '';
+  document.getElementById('abonoPOSCajaInfo').textContent = (state.caja?.nombre || '—') + ' | Sucursal: ' + (state.caja?.sucursalNombre || '—');
+
+  try {
+    const tipos = await API.get('/tipos-pago');
+    document.getElementById('abonoPOSTipoPago').innerHTML = tipos.map(t =>
+      `<option value="${t.idTipoPago}">${Utils.esc(t.nombre)}</option>`).join('');
+  } catch (_) {
+    document.getElementById('abonoPOSTipoPago').innerHTML = '<option value="">Sin formas de pago</option>';
+  }
+
+  const selCredito = document.getElementById('abonoPOSCredito');
+  selCredito.innerHTML = '<option value="">Cargando cr\u00e9ditos...</option>';
+  if (data?.idCliente) {
+    try {
+      const creditos = await API.get('/creditos/clientes/' + data.idCliente + '/creditos');
+      const activos = (creditos || []).filter(c => c.estado === 'ACTIVO' && (c.saldoPendiente || 0) > 0);
+      selCredito.innerHTML = '<option value="-1">Abono general (repartir entre todos)</option>' +
+        activos.map(c =>
+          `<option value="${c.idCredito}">Cr\u00e9dito #${c.idCredito} \u2014 saldo $${(c.saldoPendiente || 0).toFixed(2)}</option>`).join('');
+      if (data?.idCredito && activos.some(c => c.idCredito === data.idCredito)) {
+        selCredito.value = String(data.idCredito);
+      }
+    } catch (_) {
+      selCredito.innerHTML = '<option value="-1">Abono general (repartir entre todos)</option>';
+    }
+  } else {
+    selCredito.innerHTML = '<option value="-1">Abono general</option>';
+  }
+
+  modal.show();
+}
+
+async function confirmarAbonoPOS() {
+  if (!state.caja?.idCaja) { Utils.showToast('No hay caja activa', 'error'); return; }
+  const idCliente = state.abonoPOSClienteId;
+  const idCredito = parseInt(document.getElementById('abonoPOSCredito').value) || 0;
+  const monto = parseFloat(document.getElementById('abonoPOSMonto').value);
+  const idTipoPago = parseInt(document.getElementById('abonoPOSTipoPago').value);
+
+  if (!idCliente) { Utils.showToast('Cliente no disponible', 'warning'); return; }
+  if (!monto || monto <= 0) { Utils.showToast('Ingresa un monto v\u00e1lido', 'warning'); return; }
+  if (!idTipoPago) { Utils.showToast('Selecciona una forma de pago', 'warning'); return; }
+
+  try {
+    if (idCredito === -1 || idCredito === 0) {
+      await API.post('/creditos/abonos/general', { idCliente: idCliente, monto: monto, idTipoPago: idTipoPago, idCaja: state.caja.idCaja });
+    } else {
+      await API.post('/creditos/abonos', { idCredito: idCredito, monto: monto, tipo: 'PARCIAL', idTipoPago: idTipoPago, idCaja: state.caja.idCaja });
+    }
+    Utils.showToast('Abono registrado e ingreso a caja', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('abonoPOSModal'))?.hide();
+    document.getElementById('abonoPOSMonto').value = '';
+    await refreshCaja();
+    await cargarClientesSelect('posCliente');
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
@@ -1480,42 +1609,51 @@ async function cargarEsperas() {
 }
 
 function renderEsperas() {
-  const list = document.getElementById('posEsperaList');
-  const count = document.getElementById('posEsperaCount');
-  if (!list) return;
-  count.textContent = state.esperaVentas.length;
-  if (state.esperaVentas.length === 0) {
-    list.innerHTML = '<small class="text-muted">Sin ventas en espera</small>';
+  const tabsContainer = document.getElementById('posEsperaTabs');
+  const tabsPanel = document.getElementById('posEsperaTabsPanel');
+  if (!tabsContainer) return;
+
+  if (!state.esperaVentas || state.esperaVentas.length === 0) {
+    if (tabsPanel) tabsPanel.classList.add('d-none');
+    tabsContainer.innerHTML = '';
+    state.activeEsperaTab = null;
     return;
   }
-  list.innerHTML = state.esperaVentas.map(v =>
-    `<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.8rem">
-      <div>
-        <div class="fw-semibold">#${v.idVenta} ${v.clienteNombre ? Utils.esc(v.clienteNombre) : 'Mostrador'}</div>
-        <small class="text-muted">$${v.total.toFixed(2)}</small>
-      </div>
-      <div class="d-flex gap-1">
-        <button class="btn btn-sm btn-success px-2 pos-reanudar-espera" data-id="${v.idVenta}" title="Reanudar" style="font-size:0.7rem">
-          <i class="fas fa-play"></i>
-        </button>
-        <button class="btn btn-sm btn-outline-danger px-2 pos-cancelar-espera" data-id="${v.idVenta}" title="Cancelar venta" style="font-size:0.7rem">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-    </div>`
-  ).join('');
+  if (tabsPanel) tabsPanel.classList.remove('d-none');
 
-  list.querySelectorAll('.pos-reanudar-espera').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      reanudarEspera(parseInt(btn.dataset.id));
+  if (!state.activeEsperaTab || !state.esperaVentas.find(v => v.idVenta === state.activeEsperaTab)) {
+    state.activeEsperaTab = state.esperaVentas[0].idVenta;
+  }
+
+  tabsContainer.innerHTML = state.esperaVentas.map(v => {
+    const isActive = v.idVenta === state.activeEsperaTab;
+    const cliente = v.clienteNombre ? Utils.esc(v.clienteNombre) : 'Mostrador';
+    return `<li class="nav-item pos-espera-item" role="presentation">
+      <button class="nav-link ${isActive ? 'active' : ''}" id="espera-tab-${v.idVenta}" data-espera-id="${v.idVenta}"
+        type="button" role="tab" aria-selected="${isActive}"
+        style="font-size:0.72rem;padding:4px 8px;white-space:nowrap;cursor:pointer"
+        title="Recuperar la cuenta de ${cliente}">
+        ${cliente} <small class="text-muted" style="font-weight:600">$${v.total.toFixed(2)}</small>
+      </button>
+      <button type="button" class="pos-espera-close" data-espera-del="${v.idVenta}"
+        title="Eliminar venta en espera" aria-label="Eliminar venta en espera">&#10005;</button>
+    </li>`;
+  }).join('');
+
+  tabsContainer.querySelectorAll('[data-espera-id]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const id = parseInt(btn.dataset.esperaId);
+      state.activeEsperaTab = id;
+      await reanudarEspera(id);
     });
   });
 
-  list.querySelectorAll('.pos-cancelar-espera').forEach(btn => {
+  tabsContainer.querySelectorAll('.pos-espera-close').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      cancelarEspera(parseInt(btn.dataset.id));
+      e.preventDefault();
+      eliminarEspera(parseInt(btn.dataset.esperaDel));
     });
   });
 }
@@ -1580,11 +1718,6 @@ async function reanudarEspera(idVenta) {
     Utils.showToast('Venta en espera recuperada. Modifica y cobra.', 'success');
     await cargarEsperas();
 
-    const tipoRadios = document.querySelectorAll('input[name="tipoVenta"]');
-    tipoRadios.forEach(r => {
-      if (r.value === venta.tipoVenta) r.checked = true;
-    });
-
     if (venta.clienteId) {
       const sel = document.getElementById('posCliente');
       if (sel) {
@@ -1597,18 +1730,21 @@ async function reanudarEspera(idVenta) {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
-async function cancelarEspera(idVenta) {
+async function eliminarEspera(idVenta) {
   const venta = state.esperaVentas.find(v => v.idVenta === idVenta);
-  const ok = await Utils.confirm('Cancelar Venta en Espera',
-    'La venta #' + idVenta + (venta?.clienteNombre ? ' de ' + venta.clienteNombre : '') + ' est\u00e1 en espera. Se restaurar\u00e1 el stock. \u00bfCancelarla definitivamente?');
+  const ventaId = parseInt(idVenta);
+  const ok = await Utils.confirm('Eliminar venta en espera',
+    'Se eliminar\u00e1 la cuenta de ' + (venta?.clienteNombre || 'Mostrador')
+    + ' por $' + (venta?.total != null ? venta.total.toFixed(2) : '0.00') + '. \u00bfContinuar?');
   if (!ok) return;
   try {
-    await API.post('/ventas/' + idVenta + '/cancelar-espera', {});
-    if (state.activeEsperaId === idVenta) {
+    await API.post('/ventas/' + ventaId + '/cancelar-espera', {});
+    if (state.activeEsperaTab === ventaId) state.activeEsperaTab = null;
+    if (state.activeEsperaId === ventaId) {
       state.activeEsperaId = null;
       await limpiarCart();
     }
-    Utils.showToast('Venta en espera cancelada, stock restaurado', 'success');
+    Utils.showToast('Venta en espera eliminada', 'success');
     await cargarEsperas();
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }

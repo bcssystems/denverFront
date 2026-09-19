@@ -79,8 +79,7 @@ function renderTable() {
     <td>${Utils.formatDate(p.fechaRegistro)}</td>
     <td><span class="badge-status ${p.activa ? 'badge-active' : 'badge-inactive'}">${p.activa ? 'Activo' : 'Inactivo'}</span></td>
     <td class="acciones-cell">
-      <button class="btn-action btn-action-edit" data-id="${p.idPersona}" data-action="edit" title="Editar"><i class="fas fa-edit"></i></button>
-      <button class="btn-action btn-action-delete" data-id="${p.idPersona}" data-action="delete" title="Eliminar"><i class="fas fa-trash"></i></button>
+      <button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${p.idPersona}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button>
     </td>
   </tr>`).join('');
 }
@@ -112,11 +111,20 @@ function renderPagination() {
 }
 
 function handleTableClick(e) {
-  const btn = e.target.closest('.btn-action');
-  if (!btn) return;
-  const id = parseInt(btn.dataset.id);
-  if (btn.dataset.action === 'edit') abrirModal(id);
-  else if (btn.dataset.action === 'delete') confirmarEliminar(id);
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    e.preventDefault();
+    abrirAccionesPersona(kebab, parseInt(kebab.dataset.id));
+    return;
+  }
+}
+
+function abrirAccionesPersona(anchor, id) {
+  const items = [
+    { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
+    { danger: true, icon: 'fa-user-slash', text: 'Desactivar', onClick: () => confirmarEliminar(id) },
+  ];
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 function renderPermisosAdicionales(idRol, seleccionados) {

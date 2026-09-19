@@ -26,11 +26,21 @@ function bindEvents() {
     }
   });
   document.getElementById('tableBody')?.addEventListener('click', (e) => {
-    const detalle = e.target.closest('[data-detalle]');
-    if (detalle) { e.preventDefault(); verDetalle(parseInt(detalle.dataset.detalle)); return; }
-    const factura = e.target.closest('[data-factura]');
-    if (factura) { e.preventDefault(); imprimirRemision(parseInt(factura.dataset.factura)); return; }
+    const kebab = e.target.closest('.kebab-trigger');
+    if (kebab) {
+      e.preventDefault();
+      abrirAccionesVenta(kebab, parseInt(kebab.dataset.id));
+      return;
+    }
   });
+}
+
+function abrirAccionesVenta(anchor, id) {
+  const items = [
+    { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
+    { icon: 'fa-print', text: 'Imprimir remisi\u00f3n', color: 'var(--success)', onClick: () => imprimirRemision(id) },
+  ];
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 async function cargarSucursales() {
@@ -104,8 +114,7 @@ async function buscar(page) {
           <td class="fw-semibold">$${(v.total || 0).toFixed(2)}</td>
           <td><span class="badge ${estadoBadge}">${v.estado}</span></td>
           <td>${Utils.formatDateTime(v.fecha)}</td>
-          <td><button class="btn btn-sm btn-outline-info" data-detalle="${v.idVenta}" title="Ver detalle"><i class="fas fa-eye"></i></button>
-              <button class="btn btn-sm btn-outline-success" data-factura="${v.idVenta}" title="Imprimir remisi\u00f3n"><i class="fas fa-print"></i></button></td>
+          <td class="acciones-cell"><button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${v.idVenta}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button></td>
         </tr>`;
       }).join('');
 

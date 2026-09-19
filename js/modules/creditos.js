@@ -6,7 +6,6 @@ let state = {
   creditos: [],
   movimientos: [],
   tiposPago: [],
-  cajas: [],
   estadoCuenta: null,
   filtro: 'pendientes',
 };
@@ -15,7 +14,6 @@ export function init() {
   bindEvents();
   cargarClientesCredito();
   cargarTiposPago();
-  cargarCajas();
 }
 
 function bindEvents() {
@@ -34,9 +32,7 @@ function bindEvents() {
   document.getElementById('tableCreditosBody')?.addEventListener('click', handleCreditoClick);
   document.getElementById('btnCerrarDetalle')?.addEventListener('click', cerrarDetalle);
   document.getElementById('btnCerrarEstadoCuenta')?.addEventListener('click', cerrarDetalle);
-  document.getElementById('btnAbonarTodas')?.addEventListener('click', abrirAbonoGeneralModal);
-  document.getElementById('btnConfirmarAbono')?.addEventListener('click', confirmarAbono);
-  document.getElementById('btnConfirmarAbonoGeneral')?.addEventListener('click', confirmarAbonoGeneral);
+  document.getElementById('btnAbonarTodas')?.addEventListener('click', abonarTodasEnPOS);
   document.getElementById('btnImprimirEstadoCuenta')?.addEventListener('click', imprimirEstadoCuenta);
   document.getElementById('estadoCuentaModal')?.addEventListener('hidden.bs.modal', () => {
     state.estadoCuenta = null;
@@ -63,35 +59,10 @@ async function cargarTiposPago() {
   } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
-async function cargarCajas() {
-  try {
-    state.cajas = await API.get('/cajas');
-    const optsHtml = state.cajas
-      .map(c => `<option value="${c.idCaja}">${Utils.esc(c.nombre)}</option>`)
-      .join('');
-    const selAbono = document.getElementById('abonoCaja');
-    if (selAbono) selAbono.innerHTML = optsHtml;
-    const selGeneral = document.getElementById('abonoGeneralCaja');
-    if (selGeneral) selGeneral.innerHTML = optsHtml;
-    const lastCajaId = localStorage.getItem('lastCajaId');
-    if (lastCajaId && state.cajas.some(c => String(c.idCaja) === String(lastCajaId))) {
-      if (selAbono) selAbono.value = lastCajaId;
-      if (selGeneral) selGeneral.value = lastCajaId;
-    }
-  } catch (err) { Utils.showToast(err.message, 'error'); }
-}
-
 function tipoPagoPorDefecto() {
   if (state.tiposPago.length === 0) return '';
   const porNombre = state.tiposPago.find(t => t.nombre.toUpperCase() === 'EFECTIVO');
   return porNombre ? porNombre.idTipoPago : state.tiposPago[0].idTipoPago;
-}
-
-function cajaPorDefecto() {
-  if (state.cajas.length === 0) return '';
-  const lastCajaId = localStorage.getItem('lastCajaId');
-  if (lastCajaId && state.cajas.some(c => String(c.idCaja) === String(lastCajaId))) return lastCajaId;
-  return state.cajas[0].idCaja;
 }
 
 async function cargarClientesCredito() {
@@ -150,14 +121,25 @@ function abrirAccionesCliente(anchor, id) {
   const items = [
     { icon: 'fa-file-invoice', text: 'Estado de cuenta', color: 'var(--primary)', onClick: () => seleccionarCliente(id, 'estado') },
     { icon: 'fa-list', text: 'Cr\u00e9ditos pendientes', color: 'var(--primary)', onClick: () => seleccionarCliente(id, 'creditos') },
-    { icon: 'fa-cash-register', text: 'Abonar', color: 'var(--success)', onClick: () => abonarDesdeCliente(id) },
+    { icon: 'fa-cash-register', text: 'Abonar', color: 'var(--success)', onClick: () => abonarEnPOS(id, cliente) },
   ];
   Utils.abrirMenuKebab(anchor, items);
 }
 
-async function abonarDesdeCliente(id) {
-  await seleccionarCliente(id, 'creditos');
-  abrirAbonoGeneralModal();
+function abonarEnPOS(id, cliente, idCredito) {
+  localStorage.setItem('abonoParaPOS', JSON.stringify({
+    idCliente: id,
+    idCredito: idCredito || null,
+    nombre: (cliente?.nombre || '') + ' ' + (cliente?.apellidoPaterno || ''),
+  }));
+  Utils.showToast('Abriendo POS para registrar el abono', 'info');
+  document.querySelector('[data-view="pages/ventas.html"]')?.click();
+}
+
+function abonarTodasEnPOS() {
+  if (state.selectedClienteId == null) return;
+  const cliente = state.clientes.find(c => c.idCliente === state.selectedClienteId);
+  abonarEnPOS(state.selectedClienteId, cliente);
 }
 
 async function seleccionarCliente(id, vista) {
@@ -242,7 +224,7 @@ function renderCreditos() {
       c.estado === 'PAGADO' ? 'bg-success' :
       c.estado === 'VENCIDO' ? 'bg-danger' : 'bg-secondary';
     const abonoBtn = c.estado === 'ACTIVO'
-      ? '<button class="btn btn-sm btn-success abono-btn" data-credito-id="' + c.idCredito + '" title="Abonar"><i class="fas fa-money-bill-wave"></i></button>'
+      ? '<button class="btn btn-sm btn-success abono-btn" data-credito-id="' + c.idCredito + '" title="Abonar en caja"><i class="fas fa-money-bill-wave"></i></button>'
       : '';
     return `<tr>
       <td>${c.idCredito}</td>
@@ -262,17 +244,16 @@ function renderCreditos() {
 }
 
 function handleCreditoClick(e) {
-  const abonoBtn = e.target.closest('.abono-btn');
-  if (abonoBtn) {
-    const id = parseInt(abonoBtn.dataset.creditoId);
-    const credito = state.creditos.find(c => c.idCredito === id);
-    if (credito) abrirAbonoModal(credito.idCredito);
-    return;
-  }
   const id = e.target.closest('[data-id]')?.dataset?.id;
   if (!id) return;
   const credito = state.creditos.find(c => c.idCredito === parseInt(id));
   if (!credito) return;
+
+  if (e.target.closest('.abono-btn')) {
+    const cliente = state.clientes.find(c => c.idCliente === state.selectedClienteId);
+    if (cliente) abonarEnPOS(state.selectedClienteId, cliente, credito.idCredito);
+    return;
+  }
   const accion = e.target.closest('[data-action]')?.dataset?.action;
   if (accion === 'reprint') reimprimirVenta(credito.idVenta || credito.folioVenta);
   else if (accion === 'ver-nota') verNotaVenta(credito);
@@ -429,10 +410,7 @@ function abrirAbonoModal(idCredito) {
   document.getElementById('abonoSaldoPendiente').textContent = '$' + (credito.saldoPendiente || 0).toFixed(2);
   document.getElementById('abonoMonto').value = '';
   document.getElementById('abonoTipo').value = 'PARCIAL';
-  const selTipo = document.getElementById('abonoTipoPago');
-  if (selTipo && state.tiposPago.length > 0) selTipo.value = tipoPagoPorDefecto();
-  const selCaja = document.getElementById('abonoCaja');
-  if (selCaja && state.cajas.length > 0) selCaja.value = cajaPorDefecto();
+  document.getElementById('abonoTipoPago').value = tipoPagoPorDefecto();
   document.getElementById('btnConfirmarAbono').dataset.creditoId = idCredito;
   new bootstrap.Modal(document.getElementById('abonoModal')).show();
 }
@@ -441,24 +419,19 @@ async function confirmarAbono() {
   const idCredito = parseInt(document.getElementById('btnConfirmarAbono').dataset.creditoId);
   const monto = parseFloat(document.getElementById('abonoMonto').value);
   const tipo = document.getElementById('abonoTipo').value;
-  const idTipoPago = parseInt(document.getElementById('abonoTipoPago').value) || null;
-  const idCaja = parseInt(document.getElementById('abonoCaja').value) || null;
+  const idTipoPago = parseInt(document.getElementById('abonoTipoPago').value);
 
   if (!monto || monto <= 0) {
     Utils.showToast('Ingresa un monto v\u00e1lido', 'warning');
     return;
   }
-  if (state.tiposPago.length > 0 && !idTipoPago) {
+  if (!idTipoPago) {
     Utils.showToast('Selecciona un m\u00e9todo de pago', 'warning');
-    return;
-  }
-  if (state.cajas.length > 0 && !idCaja) {
-    Utils.showToast('Selecciona una caja', 'warning');
     return;
   }
 
   try {
-    await API.post('/creditos/abonos', { idCredito, monto, tipo, idTipoPago, idCaja });
+    await API.post('/creditos/abonos', { idCredito, monto, tipo, idTipoPago });
     Utils.showToast('Abono registrado exitosamente', 'success');
     bootstrap.Modal.getInstance(document.getElementById('abonoModal'))?.hide();
     await Promise.all([
@@ -479,33 +452,25 @@ function abrirAbonoGeneralModal() {
 
   document.getElementById('abonoGeneralDeudaTotal').textContent = '$' + deudaTotal.toFixed(2);
   document.getElementById('abonoGeneralMonto').value = '';
-  const selTipo = document.getElementById('abonoGeneralTipoPago');
-  if (selTipo && state.tiposPago.length > 0) selTipo.value = tipoPagoPorDefecto();
-  const selCaja = document.getElementById('abonoGeneralCaja');
-  if (selCaja && state.cajas.length > 0) selCaja.value = cajaPorDefecto();
+  document.getElementById('abonoGeneralTipoPago').value = tipoPagoPorDefecto();
   new bootstrap.Modal(document.getElementById('abonoGeneralModal')).show();
 }
 
 async function confirmarAbonoGeneral() {
   const monto = parseFloat(document.getElementById('abonoGeneralMonto').value);
-  const idTipoPago = parseInt(document.getElementById('abonoGeneralTipoPago').value) || null;
-  const idCaja = parseInt(document.getElementById('abonoGeneralCaja').value) || null;
+  const idTipoPago = parseInt(document.getElementById('abonoGeneralTipoPago').value);
 
   if (!monto || monto <= 0) {
     Utils.showToast('Ingresa un monto v\u00e1lido', 'warning');
     return;
   }
-  if (state.tiposPago.length > 0 && !idTipoPago) {
+  if (!idTipoPago) {
     Utils.showToast('Selecciona un m\u00e9todo de pago', 'warning');
-    return;
-  }
-  if (state.cajas.length > 0 && !idCaja) {
-    Utils.showToast('Selecciona una caja', 'warning');
     return;
   }
 
   try {
-    await API.post('/creditos/abonos/general', { idCliente: state.selectedClienteId, monto, idTipoPago, idCaja });
+    await API.post('/creditos/abonos/general', { idCliente: state.selectedClienteId, monto, idTipoPago });
     Utils.showToast('Abono general registrado', 'success');
     bootstrap.Modal.getInstance(document.getElementById('abonoGeneralModal'))?.hide();
     await Promise.all([

@@ -24,6 +24,35 @@
   </div>
 </div>
 
+<style>
+  #posEsperaTabsPanel .nav-tabs .nav-link {
+    padding: 3px 10px;
+    margin-bottom: 2px;
+  }
+  #posEsperaTabsPanel .pos-espera-item {
+    display: inline-flex;
+    align-items: center;
+  }
+  #posEsperaTabsPanel .pos-espera-close {
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.6rem;
+    padding: 2px 5px;
+    margin-left: -4px;
+    border-radius: 50%;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.15s ease;
+  }
+  #posEsperaTabsPanel .pos-espera-close:hover {
+    color: #ef4444;
+    opacity: 1;
+    background: rgba(239, 68, 68, 0.1);
+  }
+</style>
+
 <div id="pos-interface" class="d-none">
   <div class="pos-layout">
     <div class="pos-left">
@@ -69,6 +98,10 @@
         <div id="posProductResults" class="pos-product-results mt-1 d-none">
           <div class="list-group list-group-flush" id="posProductList"></div>
         </div>
+      </div>
+
+      <div class="pos-panel pos-panel-espera-tabs" id="posEsperaTabsPanel" style="flex-shrink:0;padding:6px 12px;overflow-x:auto">
+        <ul class="nav nav-tabs module-tabs" id="posEsperaTabs" style="border-bottom:none;flex-wrap:nowrap" role="tablist"></ul>
       </div>
 
       <div class="pos-panel pos-panel-cart flex-grow-1">
@@ -117,28 +150,9 @@
     </div>
 
     <div class="pos-right">
-      <div class="pos-panel pos-panel-tipo-venta">
-        <label class="form-label fw-semibold mb-1">Tipo de Venta</label>
-        <div class="btn-group w-100" role="group">
-          <input type="radio" class="btn-check" name="tipoVenta" id="tipoContado" value="CONTADO" checked>
-          <label class="btn btn-outline-success btn-sm" for="tipoContado">Contado</label>
-          <input type="radio" class="btn-check" name="tipoVenta" id="tipoCredito" value="CREDITO">
-          <label class="btn btn-outline-info btn-sm" for="tipoCredito">Cr&eacute;dito</label>
-        </div>
-      </div>
-
       <div class="pos-panel pos-panel-saldo">
         <div class="text-center">
           <div class="small fw-semibold" id="posCajaInfo">Caja: &mdash; | Sucursal: &mdash;</div>
-        </div>
-      </div>
-
-      <div class="pos-panel pos-panel-espera" id="posEsperaPanel">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <label class="form-label fw-semibold mb-0">Ventas en Espera <span class="badge bg-warning" id="posEsperaCount">0</span></label>
-        </div>
-        <div id="posEsperaList" style="max-height:250px;overflow-y:auto">
-          <small class="text-muted">Sin ventas en espera</small>
         </div>
       </div>
 
@@ -409,57 +423,6 @@
     </div>
   </div>
 
-  <div class="modal fade" id="posCreditoModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content border-0 shadow">
-        <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold">Venta a Cr&eacute;dito</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="text-center mb-3">
-            <small class="text-muted">Total a financiar</small>
-            <h3 class="fw-bold" style="color:var(--primary)" id="posCreditoTotal">$0.00</h3>
-          </div>
-          <form id="formPosCredito">
-            <div class="mb-3">
-              <label class="form-label">Cliente <span class="text-danger">*</span></label>
-              <div class="fw-semibold small" id="posCreditoClienteName">-</div>
-            </div>
-            <div class="row g-2">
-              <div class="col-6">
-                <label class="form-label">Plazo (meses) <span class="text-danger">*</span></label>
-                <select class="form-select form-select-sm" id="posCreditoPlazo">
-                  <option value="1">1 mes</option>
-                  <option value="2">2 meses</option>
-                  <option value="3" selected>3 meses</option>
-                  <option value="4">4 meses</option>
-                  <option value="6">6 meses</option>
-                  <option value="12">12 meses</option>
-                </select>
-              </div>
-              <div class="col-6">
-                <label class="form-label">Inter&eacute;s (%)</label>
-                <input type="number" class="form-control form-control-sm" id="posCreditoInteres" step="0.1" min="0" value="0">
-              </div>
-            </div>
-            <div class="mt-3 p-2 bg-light rounded">
-              <small class="text-muted">Total c/inter&eacute;s: <strong id="posCreditoMontoOriginal">$0.00</strong></small>
-              <br>
-              <small class="text-muted">Pago mensual: <strong id="posCreditoPagoMensual">$0.00</strong></small>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer border-0">
-          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-info btn-sm px-4 ripple" id="btnConfirmarCreditoPOS">
-            <i class="fas fa-check me-1"></i> Confirmar Cr&eacute;dito
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="modal fade" id="posPromocionModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
@@ -523,6 +486,43 @@
         <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cerrar</button>
         <button type="button" class="btn btn-danger btn-sm px-4 ripple d-none" id="btnConfirmarCancelarPOS">
           <i class="fas fa-ban me-1"></i> Cancelar Venta Seleccionada
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <div class="modal fade" id="abonoPOSModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="fas fa-money-check-dollar me-1"></i> Abono a Cr&eacute;dito (POS)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold">Cliente</label>
+        <div class="mb-2" id="abonoPOSClienteName" style="font-size:0.95rem">&mdash;</div>
+        <div class="mb-3">
+          <label class="form-label small">Cr&eacute;dito</label>
+          <select class="form-select form-select-sm" id="abonoPOSCredito"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Monto</label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input type="number" class="form-control" id="abonoPOSMonto" step="0.01" min="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Forma de pago</label>
+          <select class="form-select form-select-sm" id="abonoPOSTipoPago"></select>
+        </div>
+        <p class="small text-muted mb-0">El abono registra ingreso a: <strong id="abonoPOSCajaInfo">&mdash;</strong></p>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm px-4 ripple" id="btnConfirmarAbonoPOS">
+          <i class="fas fa-check me-1"></i> Registrar Abono
         </button>
       </div>
     </div>

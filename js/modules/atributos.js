@@ -37,13 +37,23 @@ function renderTable() {
     </td>
     <td><span class="badge-status ${a.activo ? 'badge-active' : 'badge-inactive'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
     <td class="acciones-cell">
-      <button class="btn-action btn-action-edit" data-id="${a.idAtributo}" title="Editar"><i class="fas fa-edit"></i></button>
-      <button class="btn-action btn-action-delete" data-id="${a.idAtributo}" title="Eliminar"><i class="fas fa-trash"></i></button>
+      <button type="button" class="btn-kebab-toggle kebab-trigger" data-id="${a.idAtributo}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button>
     </td>
   </tr>`).join('');
 }
 
 function handleTableClick(e) {
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    e.preventDefault();
+    const id = parseInt(kebab.dataset.id);
+    const items = [
+      { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
+      { danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) },
+    ];
+    Utils.abrirMenuKebab(kebab, items);
+    return;
+  }
   const btn = e.target.closest('.btn-action');
   if (!btn) return;
   const id = parseInt(btn.dataset.id);

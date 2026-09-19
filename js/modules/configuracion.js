@@ -1,5 +1,4 @@
 const CAMPOS = {
-  fondoCajaChica: 'cfg-fondoCajaChica',
   tasaInteresMoraPagare: 'cfg-tasaInteresMoraPagare',
   diasListaNegra: 'cfg-diasListaNegra',
   titularPagare: 'cfg-titularPagare',
