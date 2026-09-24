@@ -34,6 +34,9 @@ function bindEvents() {
   document.getElementById('btnCerrarEstadoCuenta')?.addEventListener('click', cerrarDetalle);
   document.getElementById('btnAbonarTodas')?.addEventListener('click', abonarTodasEnPOS);
   document.getElementById('btnImprimirEstadoCuenta')?.addEventListener('click', imprimirEstadoCuenta);
+  document.getElementById('creditoDetalleModal')?.addEventListener('hidden.bs.modal', () => {
+    state.selectedClienteId = null;
+  });
   document.getElementById('estadoCuentaModal')?.addEventListener('hidden.bs.modal', () => {
     state.estadoCuenta = null;
   });
@@ -158,7 +161,8 @@ async function seleccionarCliente(id, vista) {
     if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
     cargarEstadoCuenta(id);
   } else {
-    document.getElementById('creditoDetalleSection').classList.remove('d-none');
+    const modalEl = document.getElementById('creditoDetalleModal');
+    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
 
   await Promise.all([
@@ -184,11 +188,6 @@ async function cargarMovimientosCliente(id) {
 async function cargarEstadoCuenta(id) {
   try {
     state.estadoCuenta = await API.get('/creditos/clientes/' + id + '/estado-cuenta');
-    const ec = state.estadoCuenta;
-    const titular = document.getElementById('estadoCuentaTitular');
-    if (titular) titular.textContent = ec.titularPagare ? Utils.esc(ec.titularPagare) : '-';
-    const tasa = document.getElementById('estadoCuentaTasaMora');
-    if (tasa) tasa.textContent = ec.tasaInteresMora != null ? ec.tasaInteresMora + '%' : '-';
     renderAbonosEstado();
   } catch (_) {}
 }
@@ -223,9 +222,6 @@ function renderCreditos() {
     const estadoBadge = c.estado === 'ACTIVO' ? 'bg-warning text-dark' :
       c.estado === 'PAGADO' ? 'bg-success' :
       c.estado === 'VENCIDO' ? 'bg-danger' : 'bg-secondary';
-    const abonoBtn = c.estado === 'ACTIVO'
-      ? '<button class="btn btn-sm btn-success abono-btn" data-credito-id="' + c.idCredito + '" title="Abonar en caja"><i class="fas fa-money-bill-wave"></i></button>'
-      : '';
     return `<tr>
       <td>${c.idCredito}</td>
       <td>#${c.folioVenta || c.idVenta}</td>
@@ -235,28 +231,41 @@ function renderCreditos() {
       <td style="font-size:0.85rem">${c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString() : '-'}</td>
       <td><span class="badge ${estadoBadge}">${c.estado}</span></td>
       <td>
-        <button class="btn-action" style="color:var(--primary)" data-id="${c.idCredito}" data-action="reprint" title="Reimprimir venta"><i class="fas fa-print"></i></button>
-        <button class="btn-action" style="color:var(--info)" data-id="${c.idCredito}" data-action="ver-nota" title="Ver nota de la venta"><i class="fas fa-sticky-note"></i></button>
-        ${abonoBtn}
+        <div class="d-flex justify-content-end">
+          <button type="button" class="btn-kebab-toggle kebab-trigger" data-credito-id="${c.idCredito}" title="Acciones"><i class="fas fa-ellipsis-v"></i></button>
+        </div>
       </td>
     </tr>`;
   }).join('');
 }
 
 function handleCreditoClick(e) {
-  const id = e.target.closest('[data-id]')?.dataset?.id;
-  if (!id) return;
-  const credito = state.creditos.find(c => c.idCredito === parseInt(id));
-  if (!credito) return;
-
-  if (e.target.closest('.abono-btn')) {
-    const cliente = state.clientes.find(c => c.idCliente === state.selectedClienteId);
-    if (cliente) abonarEnPOS(state.selectedClienteId, cliente, credito.idCredito);
+  const kebab = e.target.closest('.kebab-trigger');
+  if (kebab) {
+    e.preventDefault();
+    abrirAccionesCredito(kebab, parseInt(kebab.dataset.creditoId));
     return;
   }
-  const accion = e.target.closest('[data-action]')?.dataset?.action;
-  if (accion === 'reprint') reimprimirVenta(credito.idVenta || credito.folioVenta);
-  else if (accion === 'ver-nota') verNotaVenta(credito);
+  const verNota = e.target.closest('[data-action="ver-nota"]');
+  if (verNota) {
+    const credito = state.creditos.find(c => c.idCredito === parseInt(verNota.dataset.id));
+    if (credito) verNotaVenta(credito);
+    return;
+  }
+}
+
+function abrirAccionesCredito(anchor, id) {
+  const credito = state.creditos.find(c => c.idCredito === id);
+  if (!credito) return;
+  const cliente = state.clientes.find(c => c.idCliente === state.selectedClienteId);
+  const items = [
+    { icon: 'fa-sticky-note', text: 'Ver nota', color: 'var(--info)', onClick: () => verNotaVenta(credito) },
+    { icon: 'fa-print', text: 'Reimprimir venta', color: 'var(--primary)', onClick: () => reimprimirVenta(credito.idVenta || credito.folioVenta) },
+  ];
+  if (credito.estado === 'ACTIVO' || credito.estado === 'VENCIDO') {
+    items.push({ icon: 'fa-money-bill-wave', text: 'Abonar', color: 'var(--success)', onClick: () => abonarEnPOS(state.selectedClienteId, cliente, id) });
+  }
+  Utils.abrirMenuKebab(anchor, items);
 }
 
 function estadoCreditoInfo(c) {
@@ -390,9 +399,10 @@ function cerrarDetalle() {
   state.creditos = [];
   state.movimientos = [];
   state.estadoCuenta = null;
-  document.getElementById('creditoDetalleSection').classList.add('d-none');
-  const m1 = bootstrap.Modal.getInstance(document.getElementById('estadoCuentaModal'));
+  const m1 = bootstrap.Modal.getInstance(document.getElementById('creditoDetalleModal'));
   if (m1) m1.hide();
+  const m2 = bootstrap.Modal.getInstance(document.getElementById('estadoCuentaModal'));
+  if (m2) m2.hide();
 }
 
 function limpiarBusqueda() {
@@ -517,16 +527,12 @@ async function imprimirEstadoCuenta() {
   if (!cliente) return;
 
   let configs = {};
-  let detallesEstado = state.estadoCuenta || {};
   try {
     const list = await API.get('/configuraciones');
     (list || []).forEach(c => { configs[c.clave] = c.valor; });
   } catch (_) {}
 
   const totalPendiente = (state.creditos || []).reduce((s, c) => s + (c.saldoPendiente || 0), 0);
-  const tasaMora = detallesEstado.tasaInteresMora != null
-    ? detallesEstado.tasaInteresMora
-    : parseFloat(configs['tasaInteresMoraPagare']);
 
   const notas = (state.creditos || [])
     .map(c => ({ nota: (c.nota || '').trim(), fecha: c.fechaCreacion }))
@@ -543,6 +549,5 @@ async function imprimirEstadoCuenta() {
     movimientos,
     notas,
     totalPendiente,
-    tasaMora,
   });
 }

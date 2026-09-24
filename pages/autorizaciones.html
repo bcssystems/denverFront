@@ -1,0 +1,69 @@
+<div class="page-content">
+  <div class="page-header">
+    <div>
+      <h4><i class="fas fa-shield-alt me-2" style="color:var(--primary)"></i>Autorizaciones</h4>
+      <small class="text-muted">Solicitudes de cancelaci&oacute;n de venta y cambios de precio</small>
+    </div>
+  </div>
+
+  <div class="filter-bar filter-bar-2cols">
+    <div>
+      <label class="form-label mb-1 small text-muted">Tipo</label>
+      <select class="form-select" id="filterAutorizacionesTipo">
+        <option value="">Todos</option>
+        <option value="CANCELACION">Cancelaci&oacute;n de venta</option>
+        <option value="PRECIO">Cambio de precio</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label mb-1 small text-muted">Estado</label>
+      <select class="form-select" id="filterAutorizacionesEstado">
+        <option value="">Todos</option>
+        <option value="PENDIENTE">Pendientes</option>
+        <option value="AUTORIZADO">Autorizadas</option>
+        <option value="RECHAZADO">Rechazadas</option>
+        <option value="EXPIRADA">Expiradas</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="panel-card overflow-hidden">
+    <div class="table-responsive">
+      <table class="table table-custom table-autorizaciones mb-0">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Solicitud</th>
+            <th>Referencia</th>
+            <th>Sucursal</th>
+            <th>Cliente</th>
+            <th>Cajero</th>
+            <th>Monto</th>
+            <th>Motivo</th>
+            <th>Solicitada</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tableAutorizacionesBody">
+          <tr><td colspan="11"><div class="empty-state"><i class="fas fa-shield-alt"></i><p>Cargando...</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalCodigoAutorizacion" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow text-center">
+      <div class="modal-header border-0 justify-content-center pb-0">
+        <h6 class="modal-title fw-bold" id="modalCodigoVenta"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-3 pb-4">
+        <div class="display-3 fw-bold" id="modalCodigoValor" style="letter-spacing:8px;color:var(--primary)"></div>
+        <p class="text-muted small mt-2 mb-0" id="modalCodigoExpira"></p>
+      </div>
+    </div>
+  </div>
+</div>

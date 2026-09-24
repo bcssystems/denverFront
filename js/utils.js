@@ -303,7 +303,6 @@ const Utils = {
       const f = (filter || '').toLowerCase();
       let hasVisible = false;
       Array.from(select.options).forEach(function (opt) {
-        if (!opt.value) return;
         if (f && !opt.text.toLowerCase().includes(f)) return;
         hasVisible = true;
         const div = document.createElement('div');
@@ -312,7 +311,7 @@ const Utils = {
         div.dataset.value = opt.value;
         div.addEventListener('click', function () {
           select.value = opt.value;
-          input.value = opt.text;
+          input.value = opt.value ? opt.text : '';
           dropdown.classList.remove('show');
           select.dispatchEvent(new Event('change', { bubbles: true }));
         });

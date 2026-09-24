@@ -103,7 +103,6 @@ async function buscar(page) {
 
         const estadoBadge = v.estado === 'COMPLETADA' ? 'bg-success'
           : v.estado === 'CANCELADA' ? 'bg-danger'
-          : v.estado === 'SOLICITADA_CANCELACION' ? 'bg-warning text-dark'
           : 'bg-warning';
 
         return `<tr class="${v.estado === 'CANCELADA' ? 'text-muted' : ''}">
@@ -197,12 +196,11 @@ async function verDetalle(id) {
       </tr>`
     ).join('');
 
-    const estadoBadge = venta.estado === 'COMPLETADA' ? 'bg-success'
+const estadoBadge = venta.estado === 'COMPLETADA' ? 'bg-success'
         : venta.estado === 'CANCELADA' ? 'bg-danger'
-        : venta.estado === 'SOLICITADA_CANCELACION' ? 'bg-warning text-dark'
         : 'bg-warning';
 
-    const motivoHtml = (venta.motivoCancelacion && (venta.estado === 'SOLICITADA_CANCELACION' || venta.estado === 'CANCELADA'))
+const motivoHtml = (venta.motivoCancelacion && venta.estado === 'CANCELADA')
       ? `<div class="col-12"><strong>Motivo de cancelaci\u00f3n:</strong> ${Utils.esc(venta.motivoCancelacion)}${venta.solicitanteCancelacion ? ' <small class="text-muted">(solicitado por ' + Utils.esc(venta.solicitanteCancelacion) + ')</small>' : ''}</div>`
       : '';
 
@@ -216,8 +214,7 @@ async function verDetalle(id) {
           <div class="col-4"><strong>Descuento:</strong> $${(venta.descuento || 0).toFixed(2)}</div>
           <div class="col-4"><strong>Estado:</strong> <span class="badge ${estadoBadge}">${venta.estado}</span></div>
           ${venta.tipoVenta === 'CREDITO'
-            ? `<div class="col-4"><strong>Pagar\u00e9:</strong> ${Utils.esc(venta.folioPagare || '—')}</div>
-               <div class="col-4"><strong>Inter\u00e9s:</strong> ${venta.porcentajeInteres || 0}%</div>
+            ? `<div class="col-4"><strong>Inter\u00e9s:</strong> ${venta.porcentajeInteres || 0}%</div>
                <div class="col-4"><strong>Plazo:</strong> ${venta.plazoMeses != null ? venta.plazoMeses + ' meses' : '—'}</div>`
             : ''}
           ${(venta.pagos || []).length

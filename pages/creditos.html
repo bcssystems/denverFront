@@ -61,66 +61,67 @@
     </div>
   </div>
 
-  <div class="row g-3 mt-2 d-none" id="creditoDetalleSection">
-    <div class="col-12">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0 fw-bold" id="creditoClienteName">-</h5>
-        <div class="d-flex gap-2 align-items-center">
-          <span class="small text-muted">Deuda total: <strong id="creditosDeudaTotal" style="color:var(--danger)">$0.00</strong></span>
+  <div class="modal fade" id="creditoDetalleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-1" style="color:var(--primary)"></i> Cr&eacute;ditos de <span id="creditoClienteName">-</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-2">
+          <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <span class="small text-muted">Deuda total: <strong id="creditosDeudaTotal" style="color:var(--danger)">$0.00</strong></span>
+          </div>
+          <div class="panel-card mb-0">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-semibold mb-0"><i class="fas fa-file-invoice me-1"></i> Cr&eacute;ditos</h6>
+            </div>
+            <div class="table-responsive" style="max-height:320px">
+              <table class="table table-custom table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th style="width:5%">#</th>
+                    <th style="width:9%">Venta</th>
+                    <th style="width:14%" class="text-end">Original</th>
+                    <th style="width:14%" class="text-end">Pendiente</th>
+                    <th style="width:9%" class="text-center">Plazo</th>
+                    <th style="width:16%">Vencimiento</th>
+                    <th style="width:11%">Estado</th>
+                    <th style="width:22%"></th>
+                  </tr>
+                </thead>
+                <tbody id="tableCreditosBody">
+                  <tr><td colspan="8"><div class="empty-state py-2"><i class="fas fa-file-invoice"></i><p>Sin cr&eacute;ditos</p></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel-card mb-0 mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-semibold mb-0"><i class="fas fa-history me-1"></i> Kardex de Movimientos</h6>
+            </div>
+            <div class="table-responsive" style="max-height:240px">
+              <table class="table table-custom table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Monto</th>
+                    <th>Saldo</th>
+                  </tr>
+                </thead>
+                <tbody id="tableMovimientosBody">
+                  <tr><td colspan="4"><div class="empty-state py-2"><i class="fas fa-history"></i><p>Sin movimientos</p></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button class="btn btn-light btn-sm ripple" id="btnCerrarDetalle"><i class="fas fa-times me-1"></i> Cerrar</button>
           <button class="btn btn-success btn-sm ripple" id="btnAbonarTodas">
             <i class="fas fa-money-bill-wave me-1"></i> Abonar a Todas
           </button>
-          <button class="btn btn-outline-secondary btn-sm ripple" id="btnCerrarDetalle">
-            <i class="fas fa-times me-1"></i> Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-7">
-      <div class="panel-card">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-semibold mb-0"><i class="fas fa-file-invoice me-1"></i> Cr&eacute;ditos</h6>
-        </div>
-        <div class="table-responsive" style="max-height:350px">
-          <table class="table table-custom table-sm mb-0">
-            <thead>
-              <tr>
-                <th style="width:5%">#</th>
-                <th style="width:10%">Venta</th>
-                <th style="width:15%" class="text-end">Original</th>
-                <th style="width:15%" class="text-end">Pendiente</th>
-                <th style="width:10%" class="text-center">Plazo</th>
-                <th style="width:18%">Vencimiento</th>
-                <th style="width:12%">Estado</th>
-                <th style="width:15%"></th>
-              </tr>
-            </thead>
-            <tbody id="tableCreditosBody">
-              <tr><td colspan="8"><div class="empty-state py-2"><i class="fas fa-file-invoice"></i><p>Sin cr&eacute;ditos</p></div></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-5">
-      <div class="panel-card">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-semibold mb-0"><i class="fas fa-history me-1"></i> Kardex de Movimientos</h6>
-        </div>
-        <div class="table-responsive" style="max-height:350px">
-          <table class="table table-custom table-sm mb-0">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Monto</th>
-                <th>Saldo</th>
-              </tr>
-            </thead>
-            <tbody id="tableMovimientosBody">
-              <tr><td colspan="4"><div class="empty-state py-2"><i class="fas fa-history"></i><p>Sin movimientos</p></div></td></tr>
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -139,10 +140,6 @@
           <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
             <h6 class="fw-semibold mb-0"><i class="fas fa-file-invoice me-1"></i> Movimientos</h6>
             <div class="small">Deuda total: <strong id="estadoDeudaTotal" style="color:var(--danger)">$0.00</strong></div>
-          </div>
-          <div class="d-flex gap-3 small text-muted mb-2">
-            <span>Titular del pagar&eacute;: <strong id="estadoCuentaTitular">-</strong></span>
-            <span>Tasa de inter&eacute;s mora: <strong id="estadoCuentaTasaMora">-</strong></span>
           </div>
           <div class="table-responsive" style="max-height:320px">
             <table class="table table-custom table-sm mb-0">
@@ -170,7 +167,7 @@
             <table class="table table-custom table-sm mb-0">
               <thead>
                 <tr>
-                  <th>Pagar&eacute;</th>
+                  <th>Folio</th>
                   <th>Fecha</th>
                   <th>M&eacute;todo de pago</th>
                   <th class="text-end">Monto</th>

@@ -153,115 +153,6 @@ const TICKET_CSS = `
     }
     .firma-espacio { width: 45%; text-align: center; }
     .firma-linea { border-top: 1px solid #222; height: 26px; }
-
-    .pagare { margin-top: 8px; }
-    .pagare-h2 {
-      text-align: center;
-      font-size: 7.5pt;
-      font-weight: 800;
-      letter-spacing: 4px;
-      color: #1e3a5f;
-      text-transform: uppercase;
-      margin: 8px 0 1px;
-    }
-    .pagare-doc-no {
-      text-align: center;
-      font-size: 4pt;
-      color: #2563EB;
-      font-weight: 600;
-      padding-bottom: 3px;
-      border-bottom: 1px solid #2563EB;
-      margin-bottom: 4px;
-    }
-    .pagare-lugar-fecha {
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 3px;
-      font-size: 3.5pt;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }
-    .pagare-bueno-por {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      border: 1px solid #334155;
-      border-radius: 2px;
-      padding: 3px 5px;
-      margin: 5px 0;
-      font-size: 4.25pt;
-    }
-    .pagare-bueno-por-label { font-weight: 700; letter-spacing: 1px; }
-    .pagare-bueno-por-monto {
-      font-size: 5pt;
-      font-weight: 800;
-      color: #1e3a5f;
-      border-bottom: 1px solid #334155;
-      min-width: 40%;
-      text-align: right;
-    }
-    .pagare-leyenda {
-      font-size: 4pt;
-      text-align: justify;
-      line-height: 1.45;
-      margin-bottom: 3px;
-    }
-    .pagare-pie {
-      display: flex;
-      align-items: stretch;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .pagare-caja {
-      width: 62%;
-      border: 1px solid #334155;
-      border-radius: 2px;
-      padding: 3px 4px;
-    }
-    .pagare-caja-titulo {
-      text-align: center;
-      font-weight: 700;
-      font-size: 3.25pt;
-      letter-spacing: 1px;
-      border-bottom: 1px solid #334155;
-      padding-bottom: 1px;
-      margin-bottom: 2px;
-      text-transform: uppercase;
-    }
-    .pagare-caja-tabla { width: 100%; border-collapse: collapse; }
-    .pagare-caja-tabla td {
-      font-size: 3.5pt;
-      padding: 1px 1.5px;
-      vertical-align: top;
-    }
-    .pagare-caja-campo {
-      width: 34%;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .pagare-firma-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      text-align: center;
-    }
-    .pagare-linea-firma { border-bottom: 1px solid #222; height: 12px; }
-    .pagare-firma-rol {
-      margin-top: 2px;
-      font-size: 3.25pt;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .pagare-firma-nombre {
-      margin-top: 1px;
-      font-size: 3.5pt;
-      font-weight: 600;
-    }
   `;
 
 const STATE_CUENTA_CSS = `
@@ -367,7 +258,7 @@ export function printRemisionVenta(venta, opts) {
   }).join('');
 
   const pagoRows = esCredito
-    ? `<tr><td>Cr\u00e9dito &mdash; Pagar\u00e9 #${Utils.esc(venta.folioPagare || '—')}</td><td class="right">$${totalConInteres.toFixed(2)}</td></tr>
+    ? `<tr><td>Cr\u00e9dito &mdash; Venta #${venta.idVenta}</td><td class="right">$${totalConInteres.toFixed(2)}</td></tr>
        <tr><td class="small">Inter\u00e9s ${(porcentajeInteres || 0)}% / Plazo: ${plazoMeses != null ? plazoMeses + ' meses' : '—'}</td><td class="right">$${((venta.total || 0) * porcentajeInteres / 100).toFixed(2)}</td></tr>`
     : (venta.pagos || []).map(p => `
     <tr>
@@ -375,97 +266,29 @@ export function printRemisionVenta(venta, opts) {
       <td class="right">$${(p.monto || 0).toFixed(2)}</td>
     </tr>`).join('');
 
-  const titularPagare = configs['titularPagare'] || (venta.folioPagare ? 'BONDS' : '');
-  const lugarPagare = configs['direccionEmpresa'] || 'San Luis Potos\u00ed, S.L.P.';
-  const tasaMora = configs['tasaInteresMoraPagare'] || 0;
-  const montoLetras = Utils.numeroALetras(totalConInteres);
-
-  const deudorNombre = clienteInfo
-    ? [clienteInfo.nombre || '', clienteInfo.apellidoPaterno || '', clienteInfo.apellidoMaterno || ''].filter(Boolean).join(' ')
-    : (venta.clienteNombre || '');
-  const deudorDireccionCompuesta = clienteInfo
-    ? [clienteInfo.calle || '', clienteInfo.numExt ? '#' + clienteInfo.numExt : '', clienteInfo.numInt ? 'Int ' + clienteInfo.numInt : '', clienteInfo.colonia ? 'Col. ' + clienteInfo.colonia : ''].filter(Boolean).join(', ')
-    : '';
-  const deudorDireccion = clienteInfo ? (clienteInfo.direccion || deudorDireccionCompuesta || '') : '';
-  const deudorRfc = clienteInfo ? (clienteInfo.rfc || '') : '';
-  const deudorPoblacion = clienteInfo
-    ? [clienteInfo.municipio || '', clienteInfo.estado || ''].filter(Boolean).join(', ') || (clienteInfo.cp || '')
-    : '';
-  const deudorTel = clienteInfo ? (clienteInfo.telefono || '') : '';
-
-  const diaExpedicion = now.getDate();
-  const mesExpedicion = now.toLocaleDateString('es-MX', { month: 'long' });
-  const anioExpedicion = now.getFullYear();
-
-  const pagareHtml = esCredito ? `
-  <div class="pagare">
-    <h2 class="pagare-h2">PAGAR\u00c9</h2>
-    <div class="pagare-doc-no">FOLIO DE PAGAR\u00c9: ${Utils.esc(venta.folioPagare || '—')}</div>
-    <div class="pagare-lugar-fecha">
-      <span>LUGAR DE EXPEDICI\u00d3N: ${Utils.esc(lugarPagare)}</span>
-      <span>D\u00cdA: ${diaExpedicion}&nbsp;&nbsp; MES: ${Utils.esc(mesExpedicion)}&nbsp;&nbsp; A\u00d1O: ${anioExpedicion}</span>
-    </div>
-    <div class="pagare-bueno-por">
-      <span class="pagare-bueno-por-label">BUENO POR</span>
-      <span class="pagare-bueno-por-monto">$${totalConInteres.toFixed(2)}</span>
-    </div>
-    <p class="pagare-leyenda">
-      Debemos y pagar\u00e9(mos) incondicionalmente en esta ciudad o en cualquier otra que se me requiera, este Pagar\u00e9 a la orden de:
-      <strong>${Utils.esc(titularPagare)}</strong>, el d\u00eda ${diaExpedicion} de ${Utils.esc(mesExpedicion)} de ${anioExpedicion}.
-      La cantidad de: <strong>$${totalConInteres.toFixed(2)} (${Utils.esc(montoLetras)})</strong>.
-    </p>
-    <p class="pagare-leyenda">
-      CANTIDAD QUE CORRESPONDE AL IMPORTE DE LAS MERCANCIAS QUE SE DETALLAN EN EL PEDIDO CUYO N\u00daMERO COINCIDE CON EL DE ESTE DOCUMENTO QUE HE RECIBIDO DE CONFORMIDAD,
-      SIENDO ESTE PAGAR\u00c9 MERCANTIL EN LOS T\u00c9RMINOS DE LOS ART\u00cdCULOS 170 Y 171 DE LA LEY GENERAL DE T\u00cdTULOS Y OPERACIONES DE CR\u00c9DITO; AS\u00cd MISMO,
-      DE CONFORMIDAD CON EL ART\u00cdCULO 11 Y DEM\u00c1S RELATIVOS DE LA LEY CITADA, ME OBLIGO INCONDICIONALMENTE A PAGAR EL IMPORTE DE ESTE PAGAR\u00c9 CUANDO
-      SEA ACEPTADO EN MI NOMBRE Y REPRESENTACI\u00d3N POR EMPLEADO O DEPENDIENTE DE MI NEGOCIO. EL PRESENTE PAGAR\u00c9 ES SIN PROTESTO; EN CASO DE MORA
-      AL PLAZO SE CUBRIR\u00c1N INTERESES A LA TASA DEL <strong>${tasaMora}%</strong> MENSUAL.
-    </p>
-    <div class="pagare-pie">
-      <div class="pagare-caja">
-        <div class="pagare-caja-titulo">DATOS DEL(LOS) DEUDOR(ES) / AVAL</div>
-        <table class="pagare-caja-tabla">
-          <tr><td class="pagare-caja-campo">Nombre:</td><td>${Utils.esc(deudorNombre) || '______________'}</td></tr>
-          <tr><td class="pagare-caja-campo">Direcci\u00f3n:</td><td>${Utils.esc(deudorDireccion) || '______________'}</td></tr>
-          <tr><td class="pagare-caja-campo">RFC:</td><td>${Utils.esc(deudorRfc) || '______________'}</td></tr>
-          <tr><td class="pagare-caja-campo">Poblaci\u00f3n:</td><td>${Utils.esc(deudorPoblacion) || '______________'}</td></tr>
-          <tr><td class="pagare-caja-campo">Tel.:</td><td>${Utils.esc(deudorTel) || '______________'}</td></tr>
+  function buildBodyHtml(copyIndex) {
+    const pieHtml = `<div class="bottom-section">
+      ${esCredito ? '<div class="firmas"><div class="firma-espacio"><div class="firma-linea"></div>Entreg\u00f3</div><div class="firma-espacio"><div class="firma-linea"></div>Recibi\u00f3</div></div>' : ''}
+      <div class="divider"></div>
+      <table class="totals">
+        <tr><td>Subtotal</td><td class="right">$${(venta.subtotal || 0).toFixed(2)}</td></tr>
+        <tr><td>Descuento</td><td class="right">-$${(venta.descuento || 0).toFixed(2)}</td></tr>
+        <tr class="total-row"><td>TOTAL</td><td class="right">$${(esCredito ? totalConInteres : venta.total || 0).toFixed(2)}</td></tr>
+      </table>
+      <div class="divider"></div>
+      <div class="section">
+        <div class="section-title">Forma de Pago</div>
+        <table class="totals">
+          ${pagoRows}
         </table>
       </div>
-      <div class="pagare-firma-area">
-        <div class="pagare-linea-firma"></div>
-        <div class="pagare-firma-rol">FIRMA(S) DEL(LOS) DEUDOR(ES) / AVAL</div>
-        <div class="pagare-firma-nombre">${Utils.esc(deudorNombre)}</div>
+      ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
+      <div class="footer">
+        <strong>BONDS</strong> &mdash; Sistema de Administraci\u00f3n<br>
+        Este documento es un comprobante interno de venta<br>
+        ${fechaStr} ${horaStr}
       </div>
-    </div>
-  </div>` : '';
-
-  function buildBodyHtml(copyIndex) {
-    const totalesHtml = `
-  <div class="divider"></div>
-  <table class="totals">
-    <tr><td>Subtotal</td><td class="right">$${(venta.subtotal || 0).toFixed(2)}</td></tr>
-    <tr><td>Descuento</td><td class="right">-$${(venta.descuento || 0).toFixed(2)}</td></tr>
-    <tr class="total-row"><td>TOTAL</td><td class="right">$${(esCredito ? totalConInteres : venta.total || 0).toFixed(2)}</td></tr>
-  </table>
-  <div class="divider"></div>
-  <div class="section">
-    <div class="section-title">Forma de Pago</div>
-    <table class="totals">
-      ${pagoRows}
-    </table>
-  </div>
-  ${venta.nota ? `<div class="nota"><strong>Nota:</strong> ${Utils.esc(venta.nota)}</div>` : ''}
-  ${esCredito ? '<div class="firmas"><div class="firma-espacio"><div class="firma-linea"></div>Entreg\u00f3</div><div class="firma-espacio"><div class="firma-linea"></div>Recibi\u00f3</div></div>' : ''}`;
-
-    const pieHtml = esCredito
-      ? `<div class="bottom-section pagare-footer">${pagareHtml}</div>`
-      : `<div class="bottom-section"><div class="footer">
-      <div class="total">TOTAL: $${(venta.total || 0).toFixed(2)}</div>
-      <strong>BONDS</strong> &mdash; Sistema de Administraci\u00f3n<br>
-      Este documento es un comprobante interno de venta<br>
-      ${fechaStr} ${horaStr}
-    </div></div>`;
+    </div>`;
 
     return `
   ${numCopies > 1 ? '<div class="copy-label">--- COPIA ' + (copyIndex + 1) + ' DE ' + numCopies + ' ---</div>' : ''}
@@ -495,7 +318,6 @@ export function printRemisionVenta(venta, opts) {
       ${detalleRows}
     </tbody>
   </table>
-  ${totalesHtml}
   ${pieHtml}`;
   }
 
@@ -635,11 +457,10 @@ export function printEstadoCuenta(payload) {
   const configs = payload.configs || {};
   const cliente = payload.cliente || {};
   const totalPendiente = payload.totalPendiente || 0;
-  const tasaMora = payload.tasaMora;
 
   const creditosRows = (payload.creditos || []).map(c => `<tr>
     <td>${c.idCredito}</td>
-    <td>#${Utils.esc(c.folioPagare || c.folio || '')}</td>
+    <td>#${Utils.esc(c.folio || '')}</td>
     <td class="right">$${(c.montoOriginal || 0).toFixed(2)}</td>
     <td class="right">$${(c.saldoPendiente || 0).toFixed(2)}</td>
   </tr>`).join('');
@@ -650,7 +471,7 @@ export function printEstadoCuenta(payload) {
   const movimientos = (payload.movimientos || []).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   const movRows = movimientos.map(m => {
     const c = creditosById[m.idCredito];
-    const folio = c ? (c.folioPagare || c.folio || ('#' + c.idCredito)) : '&mdash;';
+    const folio = c ? (c.folio || ('#' + c.idCredito)) : '&mdash;';
     const venta = c ? ('#' + (c.idVenta || '')) : '&mdash;';
     const tipo = m.tipo === 'CARGO' ? 'Cargo'
       : m.tipo === 'ABONO' ? 'Abono'
@@ -683,11 +504,11 @@ export function printEstadoCuenta(payload) {
     </div>
     <div class="info-row"><span><strong>Cliente:</strong> ${Utils.esc(nombreCliente)}</span><span><strong>Tel\u00e9fono:</strong> ${Utils.esc(cliente.telefono || '-')}</span></div>
     <div class="info-row"><span><strong>L\u00edmite de cr\u00e9dito:</strong> $${(cliente.limiteCredito || 0).toFixed(2)}</span><span><strong>Deuda total:</strong> <span class="total">$${totalPendiente.toFixed(2)}</span></span></div>
-    <div class="info-row"><span><strong>Tasa de mora mensual:</strong> ${tasaMora != null ? tasaMora + '%' : '—'}</span><span><strong>Fecha:</strong> ${new Date().toLocaleDateString()}</span></div>
+    <div class="info-row"><span><strong>Fecha:</strong> ${new Date().toLocaleDateString()}</span></div>
     <div class="line"></div>
     <h3 class="sub-title">Cr\u00e9ditos</h3>
     <table>
-      <thead><tr><th>#</th><th>Pagar\u00e9</th><th class="right">Original</th><th class="right">Pendiente</th></tr></thead>
+      <thead><tr><th>#</th><th>Folio</th><th class="right">Original</th><th class="right">Pendiente</th></tr></thead>
       <tbody>${creditosRows || '<tr><td colspan="4" style="text-align:center">Sin cr\u00e9ditos</td></tr>'}</tbody>
     </table>
     <div class="line"></div>

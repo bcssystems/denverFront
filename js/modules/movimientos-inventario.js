@@ -56,6 +56,7 @@ function bindEvents() {
 
   document.getElementById('movProducto')?.addEventListener('change', actualizarStockInfo);
   document.getElementById('movSucursal')?.addEventListener('change', actualizarStockInfo);
+  document.getElementById('movTipo')?.addEventListener('change', alternarGruposMovimiento);
   document.getElementById('paginationMov')?.addEventListener('click', e => {
     const el = e.target.closest('[data-page]');
     if (!el) return;
@@ -79,6 +80,16 @@ async function cargarSucursales() {
       modalSel.innerHTML = opts;
       Utils.makeSearchableSelect('movSucursal');
     }
+    const movOrigen = document.getElementById('movSucursalOrigen');
+    const movDestino = document.getElementById('movSucursalDestino');
+    if (movOrigen) {
+      movOrigen.innerHTML = opts;
+      Utils.makeSearchableSelect('movSucursalOrigen');
+    }
+    if (movDestino) {
+      movDestino.innerHTML = opts;
+      Utils.makeSearchableSelect('movSucursalDestino');
+    }
     if (state.sucursales.length === 1) {
       const unica = state.sucursales[0].idSucursal;
       if (filtro && !state.filtros.sucursal) {
@@ -86,8 +97,24 @@ async function cargarSucursales() {
         filtro.value = String(unica);
       }
       if (modalSel) modalSel.value = String(unica);
+      if (movOrigen) movOrigen.value = String(unica);
+      if (movDestino) {
+        const destino = state.sucursales.find(s => s.idSucursal !== unica);
+        movDestino.value = destino ? String(destino.idSucursal) : '';
+      }
     }
   } catch (_) {}
+}
+
+function alternarGruposMovimiento() {
+  const tipo = document.getElementById('movTipo')?.value || 'ENTRADA';
+  const esTraslado = tipo === 'TRANSFERENCIA';
+  const sucGroup = document.getElementById('movSucursalGroup');
+  const trasladoGroup = document.getElementById('movTrasladoGroup');
+  if (sucGroup) sucGroup.classList.toggle('d-none', esTraslado);
+  if (trasladoGroup) trasladoGroup.classList.toggle('d-none', !esTraslado);
+  actualizarStockInfo();
+  actualizarStockInfoTraslado();
 }
 
 async function cargarProductos() {
@@ -129,6 +156,26 @@ async function actualizarStockInfo() {
       txt += ' | En sucursal: <strong>' + (stockSuc != null ? stockSuc : 0) + '</strong>';
     }
     info.innerHTML = txt;
+  } catch (_) {}
+}
+
+async function actualizarStockInfoTraslado() {
+  const info = document.getElementById('movStockInfoTraslado');
+  const idProducto = document.getElementById('movProducto').value;
+  const idOrigen = document.getElementById('movSucursalOrigen').value;
+  const idDestino = document.getElementById('movSucursalDestino').value;
+  if (!info || !idProducto) return;
+  try {
+    const p = await API.get('/productos/' + idProducto);
+    if (!p) return;
+    const stockEn = (idSuc) => {
+      const inv = (p.inventarioSucursales || []).find(i => i.idSucursal === parseInt(idSuc));
+      return inv ? inv.stock : 0;
+    };
+    let txt = 'Stock global: <strong>' + (p.stockActual != null ? p.stockActual : 0) + '</strong>';
+    if (idOrigen) txt += ' | Origen: <strong>' + stockEn(idOrigen) + '</strong>';
+    if (idDestino) txt += ' | Destino: <strong>' + stockEn(idDestino) + '</strong>';
+    info.innerHTML = txt + '. El traslado da de alta el inventario autom\u00e1ticamente en destino.';
   } catch (_) {}
 }
 
@@ -220,33 +267,55 @@ function abrirModal() {
   document.getElementById('movProducto').value = '';
   document.getElementById('movSucursal').value = state.sucursales.length === 1 ? String(state.sucursales[0].idSucursal) : '';
   document.getElementById('movTipo').value = 'ENTRADA';
+  document.getElementById('movSucursalOrigen').value = state.sucursales.length === 1 ? String(state.sucursales[0].idSucursal) : '';
+  document.getElementById('movSucursalDestino').value = state.sucursales.length > 1 ? String(state.sucursales.find(s => s.idSucursal !== state.sucursales[0].idSucursal)?.idSucursal || '') : '';
   Utils.updateSearchableOptions('movProducto');
   Utils.updateSearchableOptions('movSucursal');
+  Utils.updateSearchableOptions('movSucursalOrigen');
+  Utils.updateSearchableOptions('movSucursalDestino');
+  alternarGruposMovimiento();
   actualizarStockInfo();
   new bootstrap.Modal(document.getElementById('movimientoModal')).show();
 }
 
 async function registrarMovimiento() {
   const idProducto = document.getElementById('movProducto').value;
-  const idSucursal = document.getElementById('movSucursal').value;
   const tipoMovimiento = document.getElementById('movTipo').value;
   const cantidad = parseInt(document.getElementById('movCantidad').value);
 
   if (!idProducto) { Utils.showToast('Selecciona un producto', 'warning'); return; }
-  if (!idSucursal) { Utils.showToast('Selecciona una sucursal', 'warning'); return; }
   if (!cantidad || cantidad <= 0) { Utils.showToast('Ingresa una cantidad v\u00e1lida', 'warning'); return; }
 
-  const payload = {
-    tipoMovimiento,
-    cantidad,
-    idSucursal: parseInt(idSucursal),
-    referencia: document.getElementById('movReferencia').value.trim() || undefined,
-    observacion: document.getElementById('movObservacion').value.trim() || undefined,
-  };
+  const referencia = document.getElementById('movReferencia').value.trim() || undefined;
+  const observacion = document.getElementById('movObservacion').value.trim() || undefined;
 
   try {
-    await API.post('/productos/' + idProducto + '/movimiento-stock', payload);
-    Utils.showToast('Movimiento registrado', 'success');
+    if (tipoMovimiento === 'TRANSFERENCIA') {
+      const idOrigen = document.getElementById('movSucursalOrigen').value;
+      const idDestino = document.getElementById('movSucursalDestino').value;
+      if (!idOrigen || !idDestino) { Utils.showToast('Selecciona sucursal origen y destino', 'warning'); return; }
+      if (idOrigen === idDestino) { Utils.showToast('Las sucursales deben ser diferentes', 'warning'); return; }
+      await API.post('/productos/' + idProducto + '/transferir', {
+        idSucursalOrigen: parseInt(idOrigen),
+        idSucursalDestino: parseInt(idDestino),
+        cantidad,
+        referencia,
+        observacion,
+      });
+      Utils.showToast('Traslado registrado', 'success');
+    } else {
+      const idSucursal = document.getElementById('movSucursal').value;
+      if (!idSucursal) { Utils.showToast('Selecciona una sucursal', 'warning'); return; }
+      const payload = {
+        tipoMovimiento,
+        cantidad,
+        idSucursal: parseInt(idSucursal),
+        referencia,
+        observacion,
+      };
+      await API.post('/productos/' + idProducto + '/movimiento-stock', payload);
+      Utils.showToast('Movimiento registrado', 'success');
+    }
     bootstrap.Modal.getInstance(document.getElementById('movimientoModal'))?.hide();
     cargarMovimientos(0);
   } catch (err) { Utils.showToast(err.message, 'error'); }

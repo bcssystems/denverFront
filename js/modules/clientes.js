@@ -1,4 +1,4 @@
-let state = {
+﻿let state = {
   data: [],
   currentPage: 0,
   totalPages: 0,
@@ -6,7 +6,6 @@ let state = {
   editingId: null,
   paises: [],
   showInactive: false,
-  ineClienteId: null,
 };
 
 const REGIMENES_FISCALES = [
@@ -28,7 +27,6 @@ const REGIMENES_FISCALES = [
 
 export function init() {
   bindEvents();
-  initIneCameras();
   cargarPaises();
   cargarRegimenes();
   cargarClientes(0);
@@ -55,9 +53,6 @@ function bindEvents() {
       cargarColonias(cp, '');
     }
   }, 500));
-  document.getElementById('btnSubirIne')?.addEventListener('click', subirIne);
-  document.getElementById('ineFrontal')?.addEventListener('change', previewIne);
-  document.getElementById('ineTrasera')?.addEventListener('change', previewIne);
 }
 
 async function cargarPaises() {
@@ -124,7 +119,7 @@ function renderTable() {
     const saldo = c.saldoActual;
     const saldoRojo = saldo != null && saldo > 0;
     const creditoHtml = c.tieneCredito
-      ? '<span class="badge bg-info"><i class="fas fa-check me-1"></i>Sí</span>' + (c.tieneIne ? '' : ' <span class="badge bg-danger" title="Falta INE"><i class="fas fa-id-card"></i></span>')
+      ? '<span class="badge bg-info"><i class="fas fa-check"></i></span>'
       : '<span class="text-muted">-</span>';
     const limiteHtml = c.tieneCredito
       ? (c.limiteCredito != null ? '$' + c.limiteCredito.toFixed(2) : '<span class="badge bg-warning text-dark">Ilimitado</span>')
@@ -203,9 +198,7 @@ function handleTableClick(e) {
 }
 
 function abrirAccionesCliente(anchor, id) {
-  const c = (state.data || []).find(x => x.idCliente === id);
   const items = [
-    { icon: 'fa-id-card', text: 'INE' + (c && c.tieneIne ? '  \u2713' : ''), color: 'var(--warning)', onClick: () => abrirModalIne(id) },
     { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
     { danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) },
   ];
@@ -339,7 +332,7 @@ async function guardarCliente() {
 }
 
 async function confirmarEliminar(id) {
-  const confirmed = await Utils.confirmAction('¿Eliminar este cliente?', 'Confirmar', 'Eliminar');
+  const confirmed = await Utils.confirmAction('Â¿Eliminar este cliente?', 'Confirmar', 'Eliminar');
   if (!confirmed) return;
   try {
     await API.del('/clientes/' + id);
@@ -362,378 +355,6 @@ async function toggleListaNegra(id, enListaNegra, nombre) {
     Utils.showToast(err.message, 'error');
     cargarClientes(state.currentPage);
   }
-}
-
-function abrirModalIne(id) {
-  state.ineClienteId = id;
-  detenerCamaraIne(false);
-  ['Frontal', 'Trasera'].forEach(resetIneUiSide);
-  document.getElementById('ineFrontal').value = '';
-  document.getElementById('ineTrasera').value = '';
-  document.getElementById('ineCodigoLector').value = '';
-  document.getElementById('ineFrontalPreview').innerHTML = '';
-  document.getElementById('ineTraseraPreview').innerHTML = '';
-  const c = state.data.find(x => x.idCliente === id);
-  document.getElementById('clienteIneTitle').textContent = 'INE - ' + (c ? c.nombre + ' ' + (c.apellidoPaterno || '') : '') ;
-  API.get('/clientes/' + id + '/ine').then(ine => {
-    if (ine && (ine.urlFotoFrontal || ine.urlFotoTrasera)) {
-      if (ine.urlFotoFrontal) document.getElementById('ineFrontalPreview').innerHTML = '<img src="' + API.mediaBaseUrl + ine.urlFotoFrontal + '" class="img-fluid border rounded" style="max-height:140px">';
-      if (ine.urlFotoTrasera) document.getElementById('ineTraseraPreview').innerHTML = '<img src="' + API.mediaBaseUrl + ine.urlFotoTrasera + '" class="img-fluid border rounded" style="max-height:140px">';
-    }
-  }).catch(() => {});
-  new bootstrap.Modal(document.getElementById('clienteIneModal')).show();
-}
-
-function previewIne(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const target = e.target.id === 'ineFrontal' ? 'ineFrontalPreview' : 'ineTraseraPreview';
-  const reader = new FileReader();
-  reader.onload = () => {
-    document.getElementById(target).innerHTML = '<img src="' + reader.result + '" class="img-fluid border rounded" style="max-height:140px">';
-  };
-  reader.readAsDataURL(file);
-}
-
-// ------- Captura de INE con c\u00e1mara y detecci\u00f3n de bordes -------
-
-const INE_CAM = { stream: null, side: null, rafId: null, goodSince: null, throttle: 0, det: null };
-
-function initIneCameras() {
-  const soporta = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  ['Frontal', 'Trasera'].forEach(side => {
-    const low = side.toLowerCase();
-    const el = id => document.getElementById(id);
-    if (!soporta) {
-      el(`ine${side}Activate`)?.classList.add('d-none');
-      el(`ine${low}FileToggle`)?.classList.remove('d-none');
-    } else {
-      el(`ine${side}Activate`)?.addEventListener('click', () => activarCamaraIne(side));
-      el(`ine${side}Capture`)?.addEventListener('click', () => capturarIne(side, false));
-      el(`ine${low}FileToggle`)?.addEventListener('click', e => {
-        e.preventDefault();
-        el(`ine${low}FileRow`).classList.toggle('d-none');
-      });
-      el(`ine${low}Retake`)?.addEventListener('click', e => {
-        e.preventDefault();
-        activarCamaraIne(side);
-      });
-    }
-  });
-  document.getElementById('clienteIneModal')?.addEventListener('hidden.bs.modal', () => detenerCamaraIne(true));
-}
-
-function resetIneUiSide(side) {
-  const low = side.toLowerCase();
-  const el = id => document.getElementById(id);
-  const video = el(`ine${side}Video`);
-  const overlay = el(`ine${side}Overlay`);
-  if (video) { video.classList.add('d-none'); video.srcObject = null; }
-  if (overlay) { overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height); overlay.classList.add('d-none'); }
-  el(`ine${side}Placeholder`)?.classList.remove('d-none');
-  el(`ine${side}Activate`)?.classList.remove('d-none');
-  el(`ine${side}Capture`)?.classList.add('d-none');
-  el(`ine${low}FileRow`)?.classList.add('d-none');
-  el(`ine${low}FileToggle`)?.classList.remove('d-none');
-  el(`ine${low}Retake`)?.classList.add('d-none');
-}
-
-function detenerCamaraIne(resetUi) {
-  if (INE_CAM.rafId) { cancelAnimationFrame(INE_CAM.rafId); INE_CAM.rafId = null; }
-  if (INE_CAM.stream) {
-    INE_CAM.stream.getTracks().forEach(t => t.stop());
-    INE_CAM.stream = null;
-  }
-  if (resetUi && INE_CAM.side) {
-    const side = INE_CAM.side;
-    const video = document.getElementById(`ine${side}Video`);
-    if (video) video.classList.add('d-none');
-    const overlay = document.getElementById(`ine${side}Overlay`);
-    if (overlay) overlay.classList.add('d-none');
-    document.getElementById(`ine${side}Placeholder`)?.classList.remove('d-none');
-    document.getElementById(`ine${side}Activate`)?.classList.remove('d-none');
-    document.getElementById(`ine${side}Capture`)?.classList.add('d-none');
-    const low = side.toLowerCase();
-    document.getElementById(`ine${low}FileToggle`)?.classList.remove('d-none');
-    document.getElementById(`ine${low}Retake`)?.classList.remove('d-none');
-  }
-  INE_CAM.side = null;
-  INE_CAM.goodSince = null;
-  INE_CAM.throttle = 0;
-  INE_CAM.det = null;
-}
-
-async function activarCamaraIne(side) {
-  detenerCamaraIne(false);
-  const low = side.toLowerCase();
-  const $ = id => document.getElementById(id);
-  const video = $(`ine${side}Video`);
-  const overlay = $(`ine${side}Overlay`);
-  try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Este navegador no permite el acceso a la c\u00e1mara en este contexto. Abre la app en localhost y haz Ctrl+F5.');
-    }
-    if (!video || !overlay) {
-      throw new Error('Los elementos de c\u00e1mara tienen un estado obsoleto. Haz Ctrl+F5 para recargar la p\u00e1gina.');
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    });
-    INE_CAM.stream = stream;
-    INE_CAM.side = side;
-    video.srcObject = stream;
-    await video.play();
-    video.classList.remove('d-none');
-    overlay.classList.remove('d-none');
-    $(`ine${side}Placeholder`)?.classList.add('d-none');
-    $(`ine${side}Activate`)?.classList.add('d-none');
-    $(`ine${side}Capture`)?.classList.remove('d-none');
-    $(`ine${low}FileToggle`)?.classList.add('d-none');
-    $(`ine${low}Retake`)?.classList.add('d-none');
-    INE_CAM.goodSince = null;
-    INE_CAM.throttle = 0;
-    loopDeteccionIne();
-  } catch (err) {
-    detenerCamaraIne(false);
-    Utils.showToast('No se pudo acceder a la c\u00e1mara: ' + (err.message || 'permiso denegado'), 'error');
-  }
-}
-
-function loopDeteccionIne() {
-  if (!INE_CAM.stream || !INE_CAM.side) return;
-  const ahora = performance.now();
-  if (ahora - INE_CAM.throttle >= 110) {
-    INE_CAM.throttle = ahora;
-    const video = document.getElementById(`ine${INE_CAM.side}Video`);
-    if (video && video.readyState >= 2 && video.videoWidth > 0) {
-      const det = detectarDocumento(video);
-      const overlay = document.getElementById(`ine${INE_CAM.side}Overlay`);
-      if (det) {
-        INE_CAM.det = det;
-        dibujarOverlay(overlay, det);
-        if (!INE_CAM.goodSince) INE_CAM.goodSince = ahora;
-        if (ahora - INE_CAM.goodSince >= 3000) {
-          capturarIne(INE_CAM.side, true);
-          return;
-        }
-      } else {
-        INE_CAM.goodSince = null;
-        if (overlay) overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
-      }
-    }
-  }
-  INE_CAM.rafId = requestAnimationFrame(loopDeteccionIne);
-}
-
-function detectarDocumento(video) {
-  const RW = 380;
-  const RH = Math.max(240, Math.round(video.videoHeight * RW / video.videoWidth));
-  const cv = document.createElement('canvas');
-  cv.width = RW; cv.height = RH;
-  const cctx = cv.getContext('2d', { willReadFrequently: true });
-  cctx.drawImage(video, 0, 0, RW, RH);
-  const img = cctx.getImageData(0, 0, RW, RH);
-  const d = img.data;
-  const n = RW * RH;
-  const luz = new Float32Array(n);
-  for (let i = 0, k = 0; i < n; i++, k += 4) luz[i] = 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2];
-
-  const grad = new Float32Array(n);
-  let maxG = 0;
-  for (let y = 1; y < RH - 1; y++) {
-    for (let x = 1; x < RW - 1; x++) {
-      const i = y * RW + x;
-      const gx = luz[i - RW - 1] + 2 * luz[i - 1] + luz[i + RW - 1] - luz[i - RW + 1] - 2 * luz[i + 1] - luz[i + RW + 1];
-      const gy = luz[i - RW - 1] + 2 * luz[i - RW] + luz[i - RW + 1] - luz[i + RW - 1] - 2 * luz[i + RW] - luz[i + RW + 1];
-      const m = Math.sqrt(gx * gx + gy * gy);
-      grad[i] = m;
-      if (m > maxG) maxG = m;
-    }
-  }
-  if (maxG < 6) return null;
-
-  const umbral = maxG * 0.2;
-  const borde = new Uint8Array(n);
-  for (let i = 0; i < n; i++) borde[i] = grad[i] >= umbral ? 1 : 0;
-
-  const dil = new Uint8Array(borde);
-  for (let y = 1; y < RH - 1; y++) {
-    for (let x = 1; x < RW - 1; x++) {
-      if (borde[y * RW + x]) {
-        for (let dy = -1; dy <= 1; dy++)
-          for (let dx = -1; dx <= 1; dx++) dil[(y + dy) * RW + (x + dx)] = 1;
-      }
-    }
-  }
-
-  const etiqueta = new Int32Array(n).fill(-1);
-  const cola = new Int32Array(n);
-  const areas = [];
-  let etiquetaN = 0;
-  for (let i = 0; i < n; i++) {
-    if (!dil[i] || etiqueta[i] !== -1) continue;
-    let frente = 0, fin = 0;
-    cola[fin++] = i;
-    etiqueta[i] = etiquetaN;
-    areas.push(0);
-    while (frente < fin) {
-      const p = cola[frente++];
-      areas[etiquetaN]++;
-      const x = p % RW;
-      const py = (p - x) / RW;
-      if (x > 0 && dil[p - 1] && etiqueta[p - 1] === -1) { etiqueta[p - 1] = etiquetaN; cola[fin++] = p - 1; }
-      if (x < RW - 1 && dil[p + 1] && etiqueta[p + 1] === -1) { etiqueta[p + 1] = etiquetaN; cola[fin++] = p + 1; }
-      if (py > 0 && dil[p - RW] && etiqueta[p - RW] === -1) { etiqueta[p - RW] = etiquetaN; cola[fin++] = p - RW; }
-      if (py < RH - 1 && dil[p + RW] && etiqueta[p + RW] === -1) { etiqueta[p + RW] = etiquetaN; cola[fin++] = p + RW; }
-    }
-    etiquetaN++;
-  }
-
-  let mejor = -1, mejorArea = 0;
-  for (let e = 0; e < etiquetaN; e++) if (areas[e] > mejorArea) { mejorArea = areas[e]; mejor = e; }
-  if (mejor >= 0 && mejorArea >= 80) {
-    let minX = RW, maxX = -1, minY = RH, maxY = -1;
-    for (let y = 0; y < RH; y++) {
-      const r = y * RW;
-      for (let x = 0; x < RW; x++) {
-        if (etiqueta[r + x] === mejor) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-    if (maxX > 0) {
-      const w = maxX - minX, h = maxY - minY;
-      const fracA = w / RW, fracB = h / RH;
-      const ratio = w / Math.max(1, h);
-      if (fracA >= 0.32 && fracA <= 0.95 && fracB >= 0.32 && fracB <= 0.95 && ratio >= 1.25 && ratio <= 2.5) {
-        let topPx = 0, botPx = 0, leftPx = 0, rightPx = 0;
-        for (let x = minX; x <= maxX; x++) {
-          if (etiqueta[minY * RW + x] === mejor) topPx++;
-          if (etiqueta[maxY * RW + x] === mejor) botPx++;
-        }
-        for (let y = minY; y <= maxY; y++) {
-          if (etiqueta[y * RW + minX] === mejor) leftPx++;
-          if (etiqueta[y * RW + maxX] === mejor) rightPx++;
-        }
-        const minimo = { t: topPx >= w * 0.55, b: botPx >= w * 0.55, l: leftPx >= h * 0.55, r: rightPx >= h * 0.55 };
-        if (minimo.t && minimo.b && minimo.l && minimo.r) {
-          return { box: { x: minX, y: minY, w, h }, ok: true, rw: RW, rh: RH };
-        }
-      }
-    }
-  }
-
-  const hProj = new Float32Array(RH), vProj = new Float32Array(RW);
-  for (let y = 0; y < RH; y++) { let s = 0; const r = y * RW; for (let x = 0; x < RW; x++) s += dil[r + x]; hProj[y] = s; }
-  for (let x = 0; x < RW; x++) { let s = 0; for (let y = 0; y < RH; y++) s += dil[y * RW + x]; vProj[x] = s; }
-  let hMax = 0, vMax = 0;
-  for (let y = 0; y < RH; y++) if (hProj[y] > hMax) hMax = hProj[y];
-  for (let x = 0; x < RW; x++) if (vProj[x] > vMax) vMax = vProj[x];
-
-  const hu = hMax * 0.3, vu = vMax * 0.3;
-  let top = -1, bottom = -1, left = -1, right = -1;
-  for (let y = 0; y < RH; y++) if (hProj[y] >= hu) { top = y; break; }
-  for (let y = RH - 1; y >= 0; y--) if (hProj[y] >= hu) { bottom = y; break; }
-  for (let x = 0; x < RW; x++) if (vProj[x] >= vu) { left = x; break; }
-  for (let x = RW - 1; x >= 0; x--) if (vProj[x] >= vu) { right = x; break; }
-  if (top < 0 || bottom <= top || left < 0 || right <= left) return null;
-
-  const anchoT = right - left, altoT = bottom - top;
-  const fracA = anchoT / RW, fracB = altoT / RH;
-  if (fracA < 0.32 || fracA > 0.95 || fracB < 0.32 || fracB > 0.95) return null;
-  const ratio = anchoT / Math.max(1, altoT);
-  if (ratio < 1.25 || ratio > 2.5) return null;
-  return { box: { x: left, y: top, w: anchoT, h: altoT }, ok: false, rw: RW, rh: RH };
-}
-
-function dibujarOverlay(ov, det) {
-  if (!ov) return;
-  const w = ov.clientWidth || 320, h = ov.clientHeight || 240;
-  if (ov.width !== w || ov.height !== h) { ov.width = w; ov.height = h; }
-  const ctx = ov.getContext('2d');
-  ctx.clearRect(0, 0, w, h);
-  const scx = w / det.rw, scy = h / det.rh;
-  const x = det.box.x * scx, y = det.box.y * scy;
-  const bw = det.box.w * scx, bh = det.box.h * scy;
-  const g = Math.max(8, Math.min(w, h) * 0.04);
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(x, y, bw, bh);
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(x, y + g); ctx.lineTo(x, y); ctx.lineTo(x + g, y);
-  ctx.moveTo(x + bw - g, y); ctx.lineTo(x + bw, y); ctx.lineTo(x + bw, y + g);
-  ctx.moveTo(x, y + bh - g); ctx.lineTo(x, y + bh); ctx.lineTo(x + g, y + bh);
-  ctx.moveTo(x + bw - g, y + bh); ctx.lineTo(x + bw, y + bh); ctx.lineTo(x + bw, y + bh - g);
-  ctx.stroke();
-}
-
-function recortarDocumento(src, det) {
-  const scx = src.width / det.rw;
-  const scy = src.height / det.rh;
-  const margenX = Math.round(0.02 * det.box.w * scx);
-  const margenY = Math.round(0.02 * det.box.h * scy);
-  const x0 = Math.max(0, Math.round(det.box.x * scx) - margenX);
-  const y0 = Math.max(0, Math.round(det.box.y * scy) - margenY);
-  const x1 = Math.min(src.width, Math.round((det.box.x + det.box.w) * scx) + margenX);
-  const y1 = Math.min(src.height, Math.round((det.box.y + det.box.h) * scy) + margenY);
-  const w = x1 - x0, h = y1 - y0;
-  if (w < 80 || h < 80) return src;
-
-  const TARGET = 900;
-  const out = document.createElement('canvas');
-  out.width = TARGET;
-  out.height = Math.max(200, Math.round(TARGET * h / w));
-  out.getContext('2d').drawImage(src, x0, y0, w, h, 0, 0, out.width, out.height);
-  return out;
-}
-
-async function capturarIne(side, auto) {
-  const low = side.toLowerCase();
-  const video = document.getElementById(`ine${side}Video`);
-  if (!video || !video.videoWidth) return;
-  const w = video.videoWidth, h = video.videoHeight;
-  const src = document.createElement('canvas');
-  src.width = w; src.height = h;
-  src.getContext('2d').drawImage(video, 0, 0, w, h);
-
-  let out = src;
-  if (INE_CAM.det) out = recortarDocumento(src, INE_CAM.det);
-
-  detenerCamaraIne(true);
-
-  const blob = await new Promise(res => out.toBlob(res, 'image/jpeg', 0.92));
-  if (!blob) { Utils.showToast('No se pudo generar la imagen', 'error'); return; }
-  const file = new File([blob], 'ine_' + low + '.jpg', { type: 'image/jpeg' });
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  const input = document.getElementById('ine' + (side === 'Frontal' ? 'Frontal' : 'Trasera'));
-  if (input) input.files = dt.files;
-  document.getElementById('ine' + (side === 'Frontal' ? 'Frontal' : 'Trasera') + 'Preview').innerHTML =
-    '<img src="' + out.toDataURL('image/jpeg', 0.85) + '" class="img-fluid border rounded" style="max-height:140px">';
-  Utils.showToast((auto ? 'Cara ' : 'Foto ') + (side === 'Frontal' ? 'frontal' : 'trasera') + ' capturada', 'success');
-}
-
-async function subirIne() {
-  const id = state.ineClienteId;
-  const frontal = document.getElementById('ineFrontal').files[0];
-  const trasera = document.getElementById('ineTrasera').files[0];
-  if (!frontal && !trasera) {
-    Utils.showToast('Selecciona al menos una imagen (frontal o trasera)', 'warning');
-    return;
-  }
-  const formData = new FormData();
-  if (frontal) formData.append('frontal', frontal);
-  if (trasera) formData.append('trasera', trasera);
-  try {
-    await API.requestUpload('/clientes/' + id + '/ine', formData);
-    Utils.showToast('INE guardado', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('clienteIneModal'))?.hide();
-  } catch (err) { Utils.showToast(err.message, 'error'); }
 }
 
 function buildDireccionString() {
