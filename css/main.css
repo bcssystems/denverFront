@@ -229,6 +229,14 @@ body {
   background: var(--bg);
   white-space: nowrap;
 }
+.table-autorizaciones thead th {
+  font-size: 0.68rem;
+  padding: 0.5rem 0.6rem;
+}
+.table-autorizaciones tbody td {
+  font-size: 0.78rem;
+  padding: 0.5rem 0.6rem;
+}
 .table-custom tbody td {
   padding: 0.7rem 1rem;
   vertical-align: middle;
@@ -853,6 +861,20 @@ body {
 .pos-cart-remove:hover {
   color: var(--danger);
 }
+.pos-cart-price {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  opacity: 0.75;
+  transition: all 0.12s;
+}
+.pos-cart-price:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
 .cot-cart-remove {
   background: none;
   border: none;
@@ -949,33 +971,3 @@ body {
 .permiso-item-base:hover { background-color: #e9ecef; }
 
 .permisos-cell { max-width: 280px; }
-
-/* ------- Widget captura INE ------- */
-.ine-cam-wrap {
-  position: relative;
-  background: #000;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  aspect-ratio: 4 / 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ine-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.ine-overlay {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.ine-cam-placeholder {
-  color: #94a3b8;
-  font-size: 0.85rem;
-  text-align: center;
-  padding: 1rem;
-}

@@ -16,6 +16,11 @@ let state = {
   activeEsperaTab: null,
   cancelarVentas: [],
   cancelarSelectedId: null,
+  cancelarAccion: null,
+  precioLineIndex: null,
+  precioAccion: null,
+  precioSolicitudId: null,
+  precioAutorizado: null,
   lastCortePreview: null,
   reservas: [],
   gastosPendientes: 0,
@@ -110,6 +115,7 @@ function bindEvents() {
   document.getElementById('btnSolicitarGastoPOS')?.addEventListener('click', solicitarGasto);
   document.getElementById('btnCancelarVentaPOS')?.addEventListener('click', abrirCancelarVentaModal);
   document.getElementById('btnConfirmarCancelarPOS')?.addEventListener('click', confirmarCancelarVenta);
+  document.getElementById('btnConfirmarPrecioPOS')?.addEventListener('click', confirmarPrecio);
   document.getElementById('btnVentaRapidaPOS')?.addEventListener('click', () => {
     // VR no longer needs its own cliente select
     new bootstrap.Modal(document.getElementById('posVentaRapidaModal')).show();
@@ -357,15 +363,11 @@ async function verificarGastosPendientes() {
 function actualizarBotonCorte() {
   const btn = document.getElementById('btnCortePOS');
   if (!btn) return;
-  if (state.gastosPendientes > 0) {
-    btn.disabled = true;
-    btn.classList.add('disabled');
-    btn.title = 'Hay ' + state.gastosPendientes + ' gasto(s) pendiente(s) por autorizar';
-  } else {
-    btn.disabled = false;
-    btn.classList.remove('disabled');
-    btn.title = '';
-  }
+  btn.disabled = false;
+  btn.classList.remove('disabled');
+  btn.title = state.gastosPendientes > 0
+    ? 'Hay ' + state.gastosPendientes + ' gasto(s) pendiente(s) por autorizar'
+    : '';
 }
 
 function actualizarSaldoCaja() {}
@@ -752,11 +754,16 @@ function renderCart() {
       '<td>' +
         '<div class="d-flex align-items-center gap-1">' +
           '<button class="pos-cart-qty-btn pos-cart-qty-minus" data-index="' + i + '"><i class="fas fa-minus"></i></button>' +
-          '<span class="fw-semibold px-1">' + d.cantidad + '</span>' +
+          '<input type="number" class="pos-cart-qty-input form-control form-control-sm fw-semibold text-center px-1" data-index="' + i + '" value="' + d.cantidad + '" min="1" step="1" ' + (d.sku === 'ENVIO' ? 'disabled ' : '') + 'style="width:60px">' +
           '<button class="pos-cart-qty-btn pos-cart-qty-plus" data-index="' + i + '"><i class="fas fa-plus"></i></button>' +
         '</div>' +
       '</td>' +
-      '<td>$' + d.precioUnitario.toFixed(2) + '</td>' +
+      '<td>' +
+        '<div class="d-flex align-items-center gap-2">' +
+          '<span>$' + d.precioUnitario.toFixed(2) + '</span>' +
+          (canEditPrecioLine(d) ? '<button class="pos-cart-price" data-index="' + i + '" title="Modificar precio"><i class="fas fa-pen" style="font-size:0.65rem"></i></button>' : '') +
+        '</div>' +
+      '</td>' +
       '<td class="fw-semibold">$' + (d.cantidad * d.precioUnitario).toFixed(2) + '</td>' +
       '<td><button class="pos-cart-remove" data-index="' + i + '"><i class="fas fa-times"></i></button></td>' +
     '</tr>';
@@ -832,6 +839,13 @@ function renderCart() {
       });
     });
 
+    tbody.querySelectorAll('.pos-cart-price').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        abrirModalPrecio(parseInt(btn.dataset.index));
+      });
+    });
+
     tbody.querySelectorAll('.pos-cart-remove').forEach(btn => {
       btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.index);
@@ -848,6 +862,45 @@ function renderCart() {
           } catch (_) {}
         }
         state.cart.splice(i, 1);
+        renderCart();
+      });
+    });
+
+    tbody.querySelectorAll('.pos-cart-qty-input').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const i = parseInt(inp.dataset.index);
+        const item = state.cart[i];
+        if (!item) return;
+        const original = item.cantidad;
+        let nueva = parseInt(inp.value, 10);
+        if (isNaN(nueva) || nueva < 1) nueva = 1;
+        if (nueva === original) { inp.value = original; return; }
+
+        if (item.sku === 'VR') {
+          try {
+            await API.put('/carrito/rapidos/' + item._idRapido, { idCaja: state.caja.idCaja, cantidad: nueva });
+          } catch (err) { Utils.showToast(err.message, 'error'); inp.value = original; renderCart(); return; }
+          item.cantidad = nueva;
+          renderCart();
+          return;
+        }
+        if (item.sku === 'ENVIO') { inp.value = original; return; }
+
+        const p = state.productos.find(x => x.idProducto === item.idProducto);
+        if (p && nueva > stockCajaDisponible(p)) {
+          Utils.showToast('Stock insuficiente en esta sucursal (disponible: ' + stockCajaDisponible(p) + ')', 'warning');
+          inp.value = original;
+          renderCart();
+          return;
+        }
+        try {
+          await API.put('/carrito/actualizar', {
+            idCaja: state.caja.idCaja,
+            idProducto: item.idProducto,
+            cantidad: nueva,
+          });
+        } catch (err) { Utils.showToast(err.message, 'error'); inp.value = original; renderCart(); return; }
+        item.cantidad = nueva;
         renderCart();
       });
     });
@@ -896,6 +949,12 @@ async function limpiarCart() {
   state.cart = [];
   state.activeEsperaId = null;
   state.reanudandoVentaId = null;
+  const selCliente = document.getElementById('posCliente');
+  if (selCliente) selCliente.value = '';
+  Utils.updateSearchableOptions('posCliente');
+  const selPrecio = document.getElementById('precioSelector');
+  if (selPrecio) selPrecio.value = '1';
+  onPosClienteChange();
   renderCart();
 }
 
@@ -933,28 +992,17 @@ async function cargarFormasPagoCobro() {
       return;
     }
 
-    const clienteNombres = {
-      show: false,
-      value: null,
-    };
     const clienteId = parseInt(document.getElementById('posCliente')?.value) || null;
     if (clienteId) {
       const cli = state.clientes.find(x => x.idCliente === clienteId);
-      if (cli) {
-        clienteNombres.value = (cli.nombre || '') + ' ' + (cli.apellidoPaterno || '');
-        if (cli.enListaNegra) {
-          Utils.showToast('Este cliente est\u00e1 en lista negra', 'warning');
-        }
-        if (!cli.tieneIne) {
-          clienteNombres.show = true;
-        }
+      if (cli && cli.enListaNegra) {
+        Utils.showToast('Este cliente est\u00e1 en lista negra', 'warning');
       }
     }
     const clienteCredito = clienteId ? state.clientes.find(x => x.idCliente === clienteId) : null;
-    const clienteFaltaIne = !!(clienteCredito && clienteCredito.tieneCredito && !clienteCredito.tieneIne);
-    const clienteHabilitaCredito = !!(clienteCredito && clienteCredito.tieneCredito && clienteCredito.tieneIne);
+    const clienteHabilitaCredito = !!(clienteCredito && clienteCredito.tieneCredito);
     const clienteCreditoNombres = clienteCredito
-      ? Utils.esc((clienteCredito.nombre || '') + ' ' + (clienteCredito.apellidoPaterno || '')) + (clienteHabilitaCredito ? '' : (clienteFaltaIne ? ' <span class="text-danger">(falta INE)</span>' : ' <span class="text-danger">(sin cr\u00e9dito)</span>'))
+      ? Utils.esc((clienteCredito.nombre || '') + ' ' + (clienteCredito.apellidoPaterno || '')) + (clienteHabilitaCredito ? '' : ' <span class="text-danger">(sin cr\u00e9dito)</span>')
       : '<span class="text-muted">Selecciona un cliente en el POS</span>';
     const creditosDisponibles = (clienteCredito?.limiteCredito || 0) - (clienteCredito?.saldoActual || 0);
 
@@ -974,7 +1022,7 @@ async function cargarFormasPagoCobro() {
             <small class="text-muted">Cliente: <strong>${clienteCreditoNombres}</strong><br>
             ${clienteHabilitaCredito
               ? `<span class="text-muted">Disponible: $${creditosDisponibles.toFixed(2)}</span>`
-              : `<span class="text-danger" style="font-size:0.7rem">${clienteFaltaIne ? 'El cliente debe tener INE registrada para usar cr\u00e9dito' : 'Selecciona un cliente con cr\u00e9dito habilitado'}</span>`}
+              : `<span class="text-danger" style="font-size:0.7rem">Selecciona un cliente con cr\u00e9dito habilitado</span>`}
             </small>
           </div>
         </div>
@@ -1001,13 +1049,6 @@ async function cargarFormasPagoCobro() {
     }).join('');
 
     container.innerHTML = rows + creditoHtml;
-
-    if (clienteNombres.show) {
-      const faltaIne = document.createElement('div');
-      faltaIne.className = 'alert alert-warning py-1 px-2 small mb-2';
-      faltaIne.textContent = 'El cliente ' + clienteNombres.value + ' no cuenta con INE capturado';
-      container.prepend(faltaIne);
-    }
 
     container.addEventListener('input', recalcularSumaCobro);
 
@@ -1074,10 +1115,6 @@ async function confirmarCobro() {
     const cliente = state.clientes.find(c => c.idCliente === clienteId);
     if (!cliente || !cliente.tieneCredito) {
       Utils.showToast('El cliente seleccionado no tiene cr\u00e9dito habilitado', 'warning');
-      return;
-    }
-    if (!cliente.tieneIne) {
-      Utils.showToast('El cliente debe tener INE registrada para venta a cr\u00e9dito', 'warning');
       return;
     }
     if (cliente.limiteCredito != null) {
@@ -1424,7 +1461,7 @@ async function abrirAbonoPOS(data) {
   if (data?.idCliente) {
     try {
       const creditos = await API.get('/creditos/clientes/' + data.idCliente + '/creditos');
-      const activos = (creditos || []).filter(c => c.estado === 'ACTIVO' && (c.saldoPendiente || 0) > 0);
+      const activos = (creditos || []).filter(c => (c.estado === 'ACTIVO' || c.estado === 'VENCIDO') && (c.saldoPendiente || 0) > 0);
       selCredito.innerHTML = '<option value="-1">Abono general (repartir entre todos)</option>' +
         activos.map(c =>
           `<option value="${c.idCredito}">Cr\u00e9dito #${c.idCredito} \u2014 saldo $${(c.saldoPendiente || 0).toFixed(2)}</option>`).join('');
@@ -1483,7 +1520,12 @@ async function solicitarGasto() {
 }
 
 async function previewCorte() {
-  if (!state.caja) return;
+  if (!state.caja) { Utils.showToast('No hay caja activa', 'error'); return; }
+  await verificarGastosPendientes();
+  if (state.gastosPendientes > 0) {
+    Utils.showToast('No se puede realizar el corte. Hay ' + state.gastosPendientes + ' gasto(s) pendiente(s) por autorizar.', 'error');
+    return;
+  }
   try {
     const corte = await API.get('/cajas/' + state.caja.idCaja + '/corte-preview');
     state.lastCortePreview = corte;
@@ -1718,11 +1760,13 @@ async function reanudarEspera(idVenta) {
     Utils.showToast('Venta en espera recuperada. Modifica y cobra.', 'success');
     await cargarEsperas();
 
-    if (venta.clienteId) {
+    const idCliente = venta.idCliente || venta.clienteId;
+    if (idCliente) {
       const sel = document.getElementById('posCliente');
-      if (sel) {
-        const opt = sel.querySelector(`option[value="${venta.clienteId}"]`);
-        if (opt) opt.selected = true;
+      if (sel && sel.querySelector('option[value="' + idCliente + '"]')) {
+        sel.value = String(idCliente);
+        Utils.updateSearchableOptions('posCliente');
+        onPosClienteChange();
       }
     }
 
@@ -1754,6 +1798,11 @@ async function abrirCancelarVentaModal() {
   state.cancelarSelectedId = null;
   document.getElementById('btnConfirmarCancelarPOS').classList.add('d-none');
   document.getElementById('posCancelarEmpty').classList.add('d-none');
+  document.getElementById('posCancelarPanel').classList.add('d-none');
+  const motivoInput = document.getElementById('posCancelarMotivo');
+  const codigoInput = document.getElementById('posCancelarCodigo');
+  if (motivoInput) motivoInput.value = '';
+  if (codigoInput) codigoInput.value = '';
 
   try {
     state.cancelarVentas = await API.get('/ventas/sucursal/' + state.caja.idSucursal);
@@ -1782,7 +1831,7 @@ async function abrirCancelarVentaModal() {
     body.querySelectorAll('.pos-cancelar-radio').forEach(r => {
       r.addEventListener('change', () => {
         state.cancelarSelectedId = parseInt(r.value);
-        document.getElementById('btnConfirmarCancelarPOS').classList.remove('d-none');
+        prepararAccionCancelar();
       });
     });
 
@@ -1801,17 +1850,188 @@ async function abrirCancelarVentaModal() {
   new bootstrap.Modal(document.getElementById('posCancelarModal')).show();
 }
 
+async function prepararAccionCancelar() {
+  const btn = document.getElementById('btnConfirmarCancelarPOS');
+  const label = document.getElementById('btnConfirmarCancelarPOSLabel');
+  const panel = document.getElementById('posCancelarPanel');
+  const info = document.getElementById('posCancelarInfo');
+  const motivoGroup = document.getElementById('posCancelarMotivoGroup');
+  const codigoGroup = document.getElementById('posCancelarCodigoGroup');
+  const motivoInput = document.getElementById('posCancelarMotivo');
+  const codigoInput = document.getElementById('posCancelarCodigo');
+  if (motivoInput) motivoInput.value = '';
+  if (codigoInput) codigoInput.value = '';
+
+  if (Utils.hasPermiso('VENTAS_CANCELAR')) {
+    state.cancelarAccion = 'directa';
+    panel.classList.add('d-none');
+    label.textContent = 'Cancelar Venta Seleccionada';
+    btn.classList.remove('d-none');
+    return;
+  }
+
+  btn.classList.add('d-none');
+  panel.classList.remove('d-none');
+  let pendiente = null;
+  try {
+    pendiente = await API.get('/solicitudes-cancelacion/venta/' + state.cancelarSelectedId);
+  } catch (_) {}
+
+  if (pendiente && pendiente.estado === 'PENDIENTE') {
+    state.cancelarAccion = 'autorizar';
+    info.textContent = 'Ya existe una solicitud de cancelaci\u00f3n pendiente. Ingresa el c\u00f3digo que el administrador gener\u00f3 en el m\u00f3dulo de Autorizaciones.';
+    motivoGroup.classList.add('d-none');
+    codigoGroup.classList.remove('d-none');
+    label.textContent = 'Autorizar y Cancelar';
+  } else {
+    state.cancelarAccion = 'solicitar';
+    info.textContent = 'No tienes permiso directo para cancelar. Indica el motivo para enviar la solicitud al administrador.';
+    motivoGroup.classList.remove('d-none');
+    codigoGroup.classList.add('d-none');
+    label.textContent = 'Solicitar Cancelaci\u00f3n';
+  }
+  btn.classList.remove('d-none');
+}
+
 async function confirmarCancelarVenta() {
   if (!state.cancelarSelectedId) { Utils.showToast('Selecciona una venta', 'warning'); return; }
-  const ok = await Utils.confirm('Confirmar Cancelaci\u00f3n',
-    '\u00bfEst\u00e1s seguro de cancelar la venta #' + state.cancelarSelectedId + '?');
-  if (!ok) return;
+
+  if (state.cancelarAccion === 'directa' || state.cancelarAccion === 'autorizar') {
+    const ok = await Utils.confirm('Confirmar Cancelaci\u00f3n',
+      '\u00bfEst\u00e1s seguro de cancelar la venta #' + state.cancelarSelectedId + '?');
+    if (!ok) return;
+  }
+
   try {
-    await API.post('/ventas/' + state.cancelarSelectedId + '/cancelar', {});
-    Utils.showToast('Venta #' + state.cancelarSelectedId + ' cancelada', 'success');
+    if (state.cancelarAccion === 'solicitar') {
+      const motivo = document.getElementById('posCancelarMotivo').value.trim();
+      if (!motivo) { Utils.showToast('Indica el motivo de la cancelaci\u00f3n', 'warning'); return; }
+      await API.post('/solicitudes-cancelacion/venta/' + state.cancelarSelectedId, { motivo });
+      Utils.showToast('Solicitud enviada al administrador', 'success');
+    } else if (state.cancelarAccion === 'autorizar') {
+      const codigo = document.getElementById('posCancelarCodigo').value.trim();
+      if (!/^\d{4}$/.test(codigo)) { Utils.showToast('Ingresa el c\u00f3digo de 4 d\u00edgitos', 'warning'); return; }
+      await API.post('/ventas/' + state.cancelarSelectedId + '/cancelar', { codigo });
+      Utils.showToast('Venta #' + state.cancelarSelectedId + ' cancelada', 'success');
+    } else {
+      await API.post('/ventas/' + state.cancelarSelectedId + '/cancelar', {});
+      Utils.showToast('Venta #' + state.cancelarSelectedId + ' cancelada', 'success');
+    }
     bootstrap.Modal.getInstance(document.getElementById('posCancelarModal'))?.hide();
     await cargarEsperas();
   } catch (err) { Utils.showToast(err.message, 'error'); }
+}
+
+function canEditPrecioLine(d) {
+  return !!(d && d.idProducto && d.sku !== 'VR' && d.sku !== 'ENVIO');
+}
+
+async function abrirModalPrecio(i) {
+  const item = state.cart[i];
+  if (!item || !canEditPrecioLine(item)) return;
+
+  state.precioLineIndex = i;
+  state.precioAccion = null;
+  state.precioSolicitudId = null;
+  state.precioAutorizado = null;
+
+  document.getElementById('posPrecioProducto').value = item.nombre;
+  document.getElementById('posPrecioActual').value = '$' + item.precioUnitario.toFixed(2);
+  document.getElementById('posPrecioNuevo').value = item.precioUnitario;
+  document.getElementById('posPrecioMotivo').value = '';
+  document.getElementById('posPrecioCodigo').value = '';
+  document.getElementById('posPrecioPanel').classList.add('d-none');
+  document.getElementById('posPrecioMotivoGroup').classList.remove('d-none');
+  document.getElementById('posPrecioCodigoGroup').classList.add('d-none');
+  document.getElementById('posPrecioNuevo').readOnly = false;
+  document.getElementById('btnConfirmarPrecioPOS').classList.add('d-none');
+
+  if (Utils.hasPermiso('VENTAS_EDITAR_PRECIO')) {
+    state.precioAccion = 'directa';
+    document.getElementById('btnConfirmarPrecioPOSLabel').textContent = 'Aplicar Precio';
+    document.getElementById('btnConfirmarPrecioPOS').classList.remove('d-none');
+  } else {
+    document.getElementById('posPrecioPanel').classList.remove('d-none');
+    let pendiente = null;
+    try {
+      pendiente = await API.get('/solicitudes-cambio-precio/producto/' + item.idProducto
+        + '?idSucursal=' + (state.caja ? state.caja.idSucursal : ''));
+    } catch (_) {}
+
+    if (pendiente && pendiente.estado === 'PENDIENTE') {
+      state.precioAccion = 'autorizar';
+      state.precioSolicitudId = pendiente.idSolicitud;
+      state.precioAutorizado = pendiente.nuevoPrecio;
+      document.getElementById('posPrecioNuevo').value = pendiente.nuevoPrecio;
+      document.getElementById('posPrecioNuevo').readOnly = true;
+      document.getElementById('posPrecioInfo').textContent =
+        'Ya existe una solicitud de cambio de precio pendiente para este producto. Ingresa el c\u00f3digo que el administrador gener\u00f3 en el m\u00f3dulo de Autorizaciones.';
+      document.getElementById('posPrecioMotivoGroup').classList.add('d-none');
+      document.getElementById('posPrecioCodigoGroup').classList.remove('d-none');
+      document.getElementById('btnConfirmarPrecioPOSLabel').textContent = 'Autorizar y Aplicar';
+    } else {
+      state.precioAccion = 'solicitar';
+      document.getElementById('posPrecioInfo').textContent =
+        'No tienes permiso directo para modificar precios. Indica el motivo para enviar la solicitud al administrador.';
+      document.getElementById('posPrecioMotivoGroup').classList.remove('d-none');
+      document.getElementById('posPrecioCodigoGroup').classList.add('d-none');
+      document.getElementById('btnConfirmarPrecioPOSLabel').textContent = 'Solicitar Cambio';
+    }
+    document.getElementById('btnConfirmarPrecioPOS').classList.remove('d-none');
+  }
+
+  new bootstrap.Modal(document.getElementById('posPrecioModal')).show();
+}
+
+async function confirmarPrecio() {
+  const item = state.cart[state.precioLineIndex];
+  if (!item || !canEditPrecioLine(item)) { Utils.showToast('Selecciona un producto del carrito', 'warning'); return; }
+
+  const nuevos = ['directa', 'autorizar'].includes(state.precioAccion)
+    ? (state.precioAutorizado != null ? state.precioAutorizado : parseFloat(document.getElementById('posPrecioNuevo').value))
+    : parseFloat(document.getElementById('posPrecioNuevo').value);
+
+  if (state.precioAccion === 'directa') {
+    if (isNaN(nuevos) || nuevos <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
+    item.precioUnitario = nuevos;
+    renderCart();
+    bootstrap.Modal.getInstance(document.getElementById('posPrecioModal'))?.hide();
+    Utils.showToast('Precio actualizado', 'success');
+    return;
+  }
+
+  if (state.precioAccion === 'solicitar') {
+    const motivo = document.getElementById('posPrecioMotivo').value.trim();
+    if (isNaN(nuevos) || nuevos <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
+    if (!motivo) { Utils.showToast('Indica el motivo del cambio de precio', 'warning'); return; }
+    try {
+      await API.post('/solicitudes-cambio-precio', {
+        idProducto: item.idProducto,
+        idSucursal: state.caja ? state.caja.idSucursal : null,
+        precioActual: item.precioUnitario,
+        nuevoPrecio: nuevos,
+        motivo,
+      });
+      Utils.showToast('Solicitud enviada al administrador', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('posPrecioModal'))?.hide();
+    } catch (err) { Utils.showToast(err.message, 'error'); }
+    return;
+  }
+
+  if (state.precioAccion === 'autorizar') {
+    const codigo = document.getElementById('posPrecioCodigo').value.trim();
+    if (!/^\d{4}$/.test(codigo)) { Utils.showToast('Ingresa el c\u00f3digo de 4 d\u00edgitos', 'warning'); return; }
+    try {
+      await API.post('/solicitudes-cambio-precio/' + state.precioSolicitudId + '/validar-codigo', { codigo });
+      if (state.precioAutorizado != null && state.precioAutorizado > 0) {
+        item.precioUnitario = state.precioAutorizado;
+      }
+      renderCart();
+      bootstrap.Modal.getInstance(document.getElementById('posPrecioModal'))?.hide();
+      Utils.showToast('Precio actualizado', 'success');
+    } catch (err) { Utils.showToast(err.message, 'error'); }
+    return;
+  }
 }
 
 async function realizarVentaRapida() {
@@ -1823,6 +2043,7 @@ async function realizarVentaRapida() {
 
   if (!desc) { Utils.showToast('Descripci\u00f3n requerida', 'warning'); return; }
   if (!precioVenta || precioVenta <= 0) { Utils.showToast('Precio inv\u00e1lido', 'warning'); return; }
+  if (!cantidad || cantidad < 1) { Utils.showToast('La cantidad debe ser mayor a cero', 'warning'); return; }
 
   try {
     const resp = await API.post('/carrito/rapidos', {

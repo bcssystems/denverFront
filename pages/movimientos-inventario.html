@@ -44,8 +44,7 @@
         <option value="">Todos</option>
         <option value="ENTRADA">Entrada</option>
         <option value="SALIDA">Salida</option>
-        <option value="AJUSTE">Ajuste</option>
-        <option value="TRANSFERENCIA">Transferencia</option>
+        <option value="TRANSFERENCIA">Traslado</option>
         <option value="CREACION">Creaci&oacute;n</option>
         <option value="ACTUALIZACION">Actualizaci&oacute;n</option>
         <option value="RECEPCION_PEDIDO">Recepci&oacute;n Pedido</option>
@@ -93,12 +92,29 @@
               <option value="">Selecciona un producto...</option>
             </select>
           </div>
-          <div class="mb-3">
+          <div class="mb-3" id="movSucursalGroup">
             <label class="form-label">Sucursal <span class="text-danger">*</span></label>
             <select class="form-select" id="movSucursal" required>
               <option value="">Selecciona una sucursal...</option>
             </select>
             <div class="form-text" id="movStockInfo"></div>
+          </div>
+          <div class="mb-3 d-none" id="movTrasladoGroup">
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label">Sucursal Origen <span class="text-danger">*</span></label>
+                <select class="form-select" id="movSucursalOrigen" required>
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Sucursal Destino <span class="text-danger">*</span></label>
+                <select class="form-select" id="movSucursalDestino" required>
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-text" id="movStockInfoTraslado"></div>
           </div>
           <div class="row g-3">
             <div class="col-md-6">
@@ -106,7 +122,7 @@
               <select class="form-select" id="movTipo" required>
                 <option value="ENTRADA">Entrada</option>
                 <option value="SALIDA">Salida</option>
-                <option value="AJUSTE">Ajuste</option>
+                <option value="TRANSFERENCIA">Traslado</option>
               </select>
             </div>
             <div class="col-md-6">

@@ -1,9 +1,5 @@
 const CAMPOS = {
-  tasaInteresMoraPagare: 'cfg-tasaInteresMoraPagare',
-  diasListaNegra: 'cfg-diasListaNegra',
-  titularPagare: 'cfg-titularPagare',
-  descripcionEmpresa: 'cfg-descripcionEmpresa',
-  direccionEmpresa: 'cfg-direccionEmpresa'
+  diasListaNegra: 'cfg-diasListaNegra'
 };
 
 let configs = [];
