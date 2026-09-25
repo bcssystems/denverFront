@@ -48,11 +48,7 @@ const Auth = {
     try {
       const response = await API.post('/auth/login', { usuario, password });
 
-      localStorage.setItem('authToken', response.accessToken);
-      localStorage.setItem('refreshToken', response.refreshToken);
-      localStorage.setItem('username', response.usuario);
-      localStorage.setItem('userNombre', response.nombre);
-      localStorage.setItem('userRol', response.rol);
+      this.aplicarSesion(response);
       Utils.showToast('Inicio de sesión exitoso', 'success');
       this.checkAuthStatus();
     } catch (err) {
@@ -62,6 +58,16 @@ const Auth = {
       btnText.classList.remove('d-none');
       btnLoader.classList.add('d-none');
     }
+  },
+
+  aplicarSesion(data) {
+    if (!data) return;
+    if (data.accessToken) localStorage.setItem('authToken', data.accessToken);
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+    if (data.usuario) localStorage.setItem('username', data.usuario);
+    if (data.nombre) localStorage.setItem('userNombre', data.nombre);
+    if (data.rol) localStorage.setItem('userRol', data.rol);
+    localStorage.setItem('tokenRenovadoEn', String(Date.now()));
   },
 
   logout() {

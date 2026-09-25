@@ -4,7 +4,7 @@
       <h4><i class="fas fa-box me-2" style="color:var(--primary)"></i>Productos</h4>
       <small class="text-muted">Gesti&oacute;n de inventario de productos</small>
     </div>
-    <button class="btn btn-primary ripple" id="btnNuevoProducto">
+    <button class="btn btn-primary ripple" id="btnNuevoProducto" data-permiso="PRODUCTOS_CREAR">
       <i class="fas fa-plus me-1"></i> Nuevo Producto
     </button>
   </div>
@@ -34,7 +34,7 @@
   <select class="form-select form-select-sm" id="exportSucursalSelect" style="width:auto;min-width:190px;max-width:230px">
     <option value="">Todas las sucursales</option>
   </select>
-  <button class="btn btn-outline-success btn-sm ripple" id="btnExportarInventario">
+  <button class="btn btn-outline-success btn-sm ripple" id="btnExportarInventario" data-permiso="PRODUCTOS_VER">
     <i class="fas fa-file-csv me-1"></i> Exportar Inventario
   </button>
 </div>
@@ -399,7 +399,7 @@
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-primary px-4 ripple" id="btnGuardarMovimiento">Registrar</button>
+        <button type="button" class="btn btn-primary px-4 ripple" id="btnGuardarMovimiento" data-permiso="PRODUCTOS_STOCK">Registrar</button>
       </div>
     </div>
   </div>

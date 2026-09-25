@@ -22,7 +22,40 @@ const Utils = {
   },
 
   hasPermiso(permiso) {
-    return this.getPermisos().includes(permiso);
+    if (!permiso) return true;
+    const permisos = this.getPermisos();
+    return String(permiso)
+      .split(/[\s,|]+/)
+      .filter(Boolean)
+      .some(p => permisos.includes(p));
+  },
+
+  sincronizarMenu() {
+    if (typeof Dashboard !== 'undefined' && Dashboard.filtrarSidebar) {
+      Dashboard.filtrarSidebar();
+    }
+    this.ocultarPorPermiso(document.getElementById('main-content'));
+  },
+
+  ocultarPorPermiso(root) {
+    const cont = root || document;
+    if (!cont || !cont.querySelectorAll) return;
+    cont.querySelectorAll('[data-permiso]').forEach(el => {
+      if (this.hasPermiso(el.dataset.permiso)) return;
+      if (el.dataset.permisoOcultar) {
+        const target = el.querySelector(el.dataset.permisoOcultar);
+        if (target) target.remove();
+        el.remove();
+        return;
+      }
+      el.style.display = 'none';
+    });
+    cont.querySelectorAll('[data-permiso-grupo]').forEach(grupo => {
+      const hijos = grupo.querySelectorAll('[data-permiso]');
+      if (hijos.length === 0) return;
+      const algunoVisible = Array.from(hijos).some(h => h.style.display !== 'none');
+      if (!algunoVisible) grupo.style.display = 'none';
+    });
   },
 
   showToast(message, type = 'info', duration = 4000) {    const container = document.getElementById('toast-container');
@@ -105,6 +138,8 @@ const Utils = {
           console.warn('Módulo no disponible:', modulo, err);
         }
       }
+      this.ocultarPorPermiso(document.getElementById('main-content'));
+      setTimeout(() => this.ocultarPorPermiso(document.getElementById('main-content')), 120);
     } catch (err) {
       this.showToast(err.message, 'error');
     }

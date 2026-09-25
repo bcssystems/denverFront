@@ -16,7 +16,11 @@ function bindEvents() {
   document.getElementById('tableRolesBody')?.addEventListener('click', handleTableClick);
   document.getElementById('rolSeleccionarTodos')?.addEventListener('click', seleccionarTodos);
   document.getElementById('rolPermisosContainer')?.addEventListener('change', e => {
-    if (e.target.classList.contains('rol-modulo-check')) seleccionarModuloRol(e.target);
+    if (e.target.classList.contains('rol-modulo-check')) {
+      seleccionarModuloRol(e.target);
+    } else if (e.target.classList.contains('rol-permiso-check')) {
+      alCambiarPermiso(e.target);
+    }
   });
 }
 
@@ -91,13 +95,19 @@ function abrirAccionesRol(anchor, id) {
   const activo = !rol || rol.activo !== false;
   const items = [
     { icon: 'fa-eye', text: 'Ver permisos', color: 'var(--info)', onClick: () => verRol(id) },
-    ...(!rol || rol.esSistema ? [] : [
-      { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
-      activo
-        ? { danger: true, icon: 'fa-trash', text: 'Desactivar', onClick: () => confirmarEliminar(id) }
-        : { icon: 'fa-undo', text: 'Reactivar', color: 'var(--success)', onClick: () => reactivarRol(id) },
-    ]),
   ];
+  if (!rol || rol.esSistema) {
+    Utils.abrirMenuKebab(anchor, items);
+    return;
+  }
+  if (Utils.hasPermiso('ROLES_EDITAR')) {
+    items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+  }
+  if (Utils.hasPermiso('ROLES_ELIMINAR')) {
+    items.push(activo
+      ? { danger: true, icon: 'fa-trash', text: 'Desactivar', onClick: () => confirmarEliminar(id) }
+      : { icon: 'fa-undo', text: 'Reactivar', color: 'var(--success)', onClick: () => reactivarRol(id) });
+  }
   Utils.abrirMenuKebab(anchor, items);
 }
 
@@ -137,7 +147,7 @@ function renderPermisos(seleccionadosIds, disabled) {
       const checked = (seleccionadosIds || []).includes(p.idPermiso) ? 'checked' : '';
       const onchange = disabled ? 'disabled' : '';
       html += `<label class="form-check form-check-inline permiso-label" style="${disabled ? 'opacity:.7' : ''}">
-        <input class="form-check-input rol-permiso-check" type="checkbox" data-modulo="${Utils.esc(modulo)}" data-id="${p.idPermiso}" ${checked} ${onchange}>
+        <input class="form-check-input rol-permiso-check" type="checkbox" data-modulo="${Utils.esc(modulo)}" data-clave="${Utils.esc(p.clave)}" data-id="${p.idPermiso}" ${checked} ${onchange}>
         <span class="form-check-label small">${Utils.esc(p.nombre)}</span>
       </label>`;
     });
@@ -145,6 +155,17 @@ function renderPermisos(seleccionadosIds, disabled) {
   }
   container.innerHTML = html;
   sincronizarChecksModulos(container);
+}
+
+function asegurarPermisoVer(cb) {
+  if (!cb || !cb.checked || cb.disabled) return;
+  const modulo = cb.dataset.modulo;
+  if (!modulo) return;
+  const grupo = cb.closest('.rol-modulo-grupo');
+  if (!grupo) return;
+  const ver = Array.from(grupo.querySelectorAll('.rol-permiso-check'))
+    .find(c => c.dataset.clave === modulo + '_VER');
+  if (ver && !ver.checked && !ver.disabled) ver.checked = true;
 }
 
 function sincronizarChecksModulos(container) {
@@ -165,6 +186,11 @@ function seleccionarModuloRol(moduloCheck) {
   if (!grupo) return;
   const checked = moduloCheck.checked;
   grupo.querySelectorAll('.rol-permiso-check').forEach(cb => cb.checked = checked);
+  sincronizarChecksModulos(document.getElementById('rolPermisosContainer'));
+}
+
+function alCambiarPermiso(cb) {
+  asegurarPermisoVer(cb);
   sincronizarChecksModulos(document.getElementById('rolPermisosContainer'));
 }
 

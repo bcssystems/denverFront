@@ -369,18 +369,23 @@ function handleTableClick(e) {
 
 function abrirAccionesProducto(anchor, id) {
   const p = (state.data || []).find(x => x.idProducto === id);
-  const items = [
-    { icon: 'fa-warehouse', text: 'Inventario y movimientos', color: 'var(--primary)', onClick: () => verInventario(id) },
-    { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
-  ];
-  if (p && !p.tieneVariantes) {
+  const items = [];
+  if (Utils.hasPermiso('PRODUCTOS_STOCK')) {
+    items.push({ icon: 'fa-warehouse', text: 'Inventario y movimientos', color: 'var(--primary)', onClick: () => verInventario(id) });
+  }
+  items.push({ icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) });
+  if (p && !p.tieneVariantes && Utils.hasPermiso('PRODUCTOS_EDITAR')) {
     items.push({ icon: 'fa-images', text: 'Multimedia', color: 'var(--secondary)', onClick: () => verMultimedia(id) });
   }
-  if (p && !p.activo) {
+  if (p && !p.activo && Utils.hasPermiso('PRODUCTOS_EDITAR')) {
     items.push({ icon: 'fa-undo', text: 'Reactivar', color: '#28a745', onClick: () => reactivarProducto(id) });
   }
-  items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
-  items.push({ danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) });
+  if (Utils.hasPermiso('PRODUCTOS_EDITAR')) {
+    items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+  }
+  if (Utils.hasPermiso('PRODUCTOS_ELIMINAR')) {
+    items.push({ danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) });
+  }
   Utils.abrirMenuKebab(anchor, items);
 }
 
