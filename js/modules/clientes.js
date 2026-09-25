@@ -198,10 +198,13 @@ function handleTableClick(e) {
 }
 
 function abrirAccionesCliente(anchor, id) {
-  const items = [
-    { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
-    { danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) },
-  ];
+  const items = [];
+  if (Utils.hasPermiso('CLIENTES_EDITAR')) {
+    items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+  }
+  if (Utils.hasPermiso('CLIENTES_ELIMINAR')) {
+    items.push({ danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) });
+  }
   Utils.abrirMenuKebab(anchor, items);
 }
 

@@ -79,10 +79,14 @@ function handleTableClick(e) {
   if (kebab) {
     e.preventDefault();
     const id = parseInt(kebab.dataset.id);
-    Utils.abrirMenuKebab(kebab, [
-      { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
-      { danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) },
-    ]);
+    const items = [];
+    if (Utils.hasPermiso('PROVEEDORES_EDITAR')) {
+      items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+    }
+    if (Utils.hasPermiso('PROVEEDORES_ELIMINAR')) {
+      items.push({ danger: true, icon: 'fa-trash', text: 'Eliminar', onClick: () => confirmarEliminar(id) });
+    }
+    Utils.abrirMenuKebab(kebab, items);
     return;
   }
   const item = e.target.closest('.btn-action');

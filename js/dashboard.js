@@ -66,6 +66,10 @@ const Dashboard = {
   },
 
   filtrarSidebar() {
+    document.querySelectorAll('#sidebar-nav li[style*="display"]').forEach(li => {
+      li.style.display = '';
+    });
+
     const links = document.querySelectorAll('.sidebar-item[data-permiso]');
     links.forEach(link => {
       const permiso = link.dataset.permiso;

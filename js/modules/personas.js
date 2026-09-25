@@ -24,17 +24,20 @@ function bindEvents() {
 }
 
 async function cargarRolesYPermisos() {
+  roles = [];
+  permisosPorModulo = {};
   try {
-    const [rolesResp, permisosResp] = await Promise.all([
-      API.get('/roles'),
-      API.get('/roles/permisos'),
-    ]);
-    roles = rolesResp || [];
-    permisosPorModulo = permisosResp || {};
-    cargarSelectRoles();
+    roles = (await API.get('/roles')) || [];
   } catch (err) {
-    console.warn('No se pudieron cargar roles/permisos', err);
+    console.warn('No se pudieron cargar los roles', err);
   }
+  try {
+    permisosPorModulo = (await API.get('/roles/permisos')) || {};
+  } catch (err) {
+    console.warn('No se pudieron cargar los permisos', err);
+  }
+  cargarSelectRoles();
+}
 }
 
 function cargarSelectRoles() {
@@ -120,10 +123,13 @@ function handleTableClick(e) {
 }
 
 function abrirAccionesPersona(anchor, id) {
-  const items = [
-    { icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) },
-    { danger: true, icon: 'fa-user-slash', text: 'Desactivar', onClick: () => confirmarEliminar(id) },
-  ];
+  const items = [];
+  if (Utils.hasPermiso('PERSONAS_EDITAR')) {
+    items.push({ icon: 'fa-edit', text: 'Editar', color: 'var(--primary)', onClick: () => abrirModal(id) });
+  }
+  if (Utils.hasPermiso('PERSONAS_ELIMINAR')) {
+    items.push({ danger: true, icon: 'fa-user-slash', text: 'Desactivar', onClick: () => confirmarEliminar(id) });
+  }
   Utils.abrirMenuKebab(anchor, items);
 }
 

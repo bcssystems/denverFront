@@ -91,10 +91,13 @@ function handleTableClick(e) {
   if (kebab) {
     e.preventDefault();
     const id = parseInt(kebab.dataset.id);
-    const items = [
-      { icon: 'fa-check', text: 'Autorizar', color: 'var(--success)', onClick: () => confirmarAccion(id, 'autorizar') },
-      { danger: true, icon: 'fa-times', text: 'Rechazar', onClick: () => confirmarAccion(id, 'rechazar') },
-    ];
+    const items = [];
+    if (Utils.hasPermiso('GASTOS_AUTORIZAR')) {
+      items.push({ icon: 'fa-check', text: 'Autorizar', color: 'var(--success)', onClick: () => confirmarAccion(id, 'autorizar') });
+    }
+    if (Utils.hasPermiso('GASTOS_AUTORIZAR')) {
+      items.push({ danger: true, icon: 'fa-times', text: 'Rechazar', onClick: () => confirmarAccion(id, 'rechazar') });
+    }
     Utils.abrirMenuKebab(kebab, items);
     return;
   }

@@ -176,16 +176,16 @@ function abrirAccionesPedido(anchor, id) {
   const estado = anchor.dataset.estado;
   const items = [
     { icon: 'fa-eye', text: 'Ver detalle', color: 'var(--primary)', onClick: () => verDetalle(id) },
-    ...(estado === 'PENDIENTE' || estado === 'PARCIAL' ? [
-      { icon: 'fa-truck-loading', text: 'Recibir', color: 'var(--success)', onClick: () => abrirRecepcion(id) },
-    ] : []),
-    ...(estado === 'PARCIAL' ? [
-      { icon: 'fa-check', text: 'Completar', color: 'var(--warning)', onClick: () => completarPedido(id) },
-    ] : []),
-    ...(estado === 'PENDIENTE' ? [
-      { danger: true, icon: 'fa-times', text: 'Cancelar', onClick: () => cancelarPedido(id) },
-    ] : []),
   ];
+  if (Utils.hasPermiso('PEDIDOS_RECEBIR') && (estado === 'PENDIENTE' || estado === 'PARCIAL')) {
+    items.push({ icon: 'fa-truck-loading', text: 'Recibir', color: 'var(--success)', onClick: () => abrirRecepcion(id) });
+  }
+  if (Utils.hasPermiso('PEDIDOS_RECEBIR') && estado === 'PARCIAL') {
+    items.push({ icon: 'fa-check', text: 'Completar', color: 'var(--warning)', onClick: () => completarPedido(id) });
+  }
+  if (Utils.hasPermiso('PEDIDOS_CANCELAR') && estado === 'PENDIENTE') {
+    items.push({ danger: true, icon: 'fa-times', text: 'Cancelar', onClick: () => cancelarPedido(id) });
+  }
   Utils.abrirMenuKebab(anchor, items);
 }
 
