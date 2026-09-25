@@ -19,6 +19,7 @@ let state = {
   movFullFechaFin: '',
   movFullPage: 0,
   movFullTotalPages: 0,
+  variantesCache: {},
 };
 
 export function init() {
@@ -134,6 +135,7 @@ async function cargarProductos(page) {
     state.data = result.content;
     state.totalPages = result.totalPages;
     state.totalElements = result.totalElements;
+    state.variantesCache = {};
     renderTable();
     renderPagination();
   } catch (err) {
@@ -189,19 +191,8 @@ function renderTable() {
     return;
   }
 
-  const parentIds = new Set();
-  const childIdsInVariants = new Set();
-  state.data.forEach(p => {
-    if (p.tieneVariantes) {
-      parentIds.add(p.idProducto);
-      if (p.variantes) {
-        p.variantes.forEach(v => childIdsInVariants.add(v.idProducto));
-      }
-    }
-  });
-
-  const parents = state.data.filter(p => parentIds.has(p.idProducto));
-  const standalone = state.data.filter(p => !parentIds.has(p.idProducto) && !childIdsInVariants.has(p.idProducto));
+  const parents = state.data.filter(p => p.tieneVariantes);
+  const standalone = state.data.filter(p => !p.tieneVariantes);
 
   let html = '';
 
@@ -215,22 +206,16 @@ function renderTable() {
 function renderProductoNode(p, isParent) {
   const id = p.idProducto;
 
-  const imgUrl = p.multimedia && p.multimedia.length > 0
-    ? API.mediaBaseUrl + (p.multimedia.find(m => m.esPrincipal)?.url || p.multimedia[0].url)
-    : null;
+  const imgRaw = p.imagenUrl || (p.multimedia && p.multimedia.length > 0
+    ? (p.multimedia.find(m => m.esPrincipal)?.url || p.multimedia[0].url)
+    : null);
+  const imgUrl = imgRaw ? API.mediaBaseUrl + imgRaw : null;
   const imgHtml = imgUrl
     ? `<img src="${Utils.esc(imgUrl)}" alt="">`
     : '<div class="no-img"><i class="fas fa-image"></i></div>';
 
   let stockDisplay = p.stockActual;
   let stockClass = Utils.getStockClass(p.stockActual, p.stockMinimo);
-  if (state.filterSucursal) {
-    const sucInv = (p.inventarioSucursales || []).find(i => i.idSucursal === parseInt(state.filterSucursal));
-    if (sucInv) {
-      stockDisplay = sucInv.stock;
-      stockClass = Utils.getStockClass(sucInv.stock, p.stockMinimo);
-    }
-  }
 
   const tipoLabel = isParent
     ? '<span class="badge bg-info">Variantes</span>'
@@ -242,12 +227,9 @@ function renderProductoNode(p, isParent) {
     ? `<button type="button" class="producto-toggle" data-id="${id}" aria-expanded="false"><i class="fas fa-chevron-right"></i></button>`
     : '<span class="producto-spacer"></span>';
 
-  let childrenHtml = '';
-  if (isParent && p.variantes && p.variantes.length > 0) {
-    childrenHtml = '<ul class="producto-children" hidden>' +
-      p.variantes.map(v => renderProductoNode(v, false)).join('') +
-      '</ul>';
-  }
+  let childrenHtml = isParent
+    ? '<ul class="producto-children" hidden></ul>'
+    : '';
 
   return `<li class="producto-node${p.activo ? '' : ' inactive'}">
     <div class="producto-row">
@@ -276,12 +258,61 @@ function setupProductoTreeInteractions() {
       const node = btn.closest('.producto-node');
       const children = node.querySelector(':scope > .producto-children');
       if (!children) return;
+
+      if (!children.dataset.loaded) {
+        expandProducto(btn, node, children);
+        return;
+      }
+
       const isExpanded = node.classList.toggle('expanded');
       btn.setAttribute('aria-expanded', isExpanded);
       children.hidden = !isExpanded;
       btn.classList.toggle('rotated', isExpanded);
     });
   });
+}
+
+async function expandProducto(btn, node, children) {
+  const id = parseInt(btn.dataset.id);
+
+  if (state.variantesCache[id]) {
+    children.dataset.loaded = '1';
+    renderChildren(children, state.variantesCache[id]);
+    expandido(btn, node, children);
+    return;
+  }
+
+  btn.disabled = true;
+  children.innerHTML = '<li class="producto-node-loading"><i class="fas fa-spinner fa-spin"></i> Cargando variantes...</li>';
+  children.hidden = false;
+  try {
+    const data = await API.get('/productos/' + id + '/variantes');
+    state.variantesCache[id] = data || [];
+    children.dataset.loaded = '1';
+    renderChildren(children, state.variantesCache[id]);
+    expandido(btn, node, children);
+  } catch (err) {
+    children.innerHTML = '';
+    children.hidden = true;
+    Utils.showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderChildren(ul, variantes) {
+  if (!variantes || variantes.length === 0) {
+    ul.innerHTML = '<li class="producto-node-loading text-muted"><span>Sin variantes</span></li>';
+  } else {
+    ul.innerHTML = variantes.map(v => renderProductoNode(v, false)).join('');
+  }
+}
+
+function expandido(btn, node, children) {
+  const isExpanded = node.classList.toggle('expanded');
+  btn.setAttribute('aria-expanded', isExpanded);
+  children.hidden = !isExpanded;
+  btn.classList.toggle('rotated', isExpanded);
 }
 
 function renderPagination() {
@@ -1138,21 +1169,6 @@ async function cargarSucursalesTransferencia() {
   } catch (_) {}
 }
 
-async function fetchAllProducts() {
-  const all = [];
-  let page = 0;
-  const size = 50;
-  while (true) {
-    const params = new URLSearchParams({ page, size, sort: 'idProducto,DESC', activo: 'true' });
-    const result = await API.get('/productos?' + params.toString());
-    const content = result.content || [];
-    all.push(...content);
-    if (page >= (result.totalPages || 1) - 1) break;
-    page++;
-  }
-  return all;
-}
-
 function getAtributosStr(p) {
   const attrs = p.atributosAsignados || [];
   if (attrs.length === 0) return '';
@@ -1164,11 +1180,12 @@ function buildInventoryRows(products, filterSucursalId) {
   for (const p of products) {
     if (p.tieneVariantes) continue;
     const atributos = getAtributosStr(p);
+    const tipo = p.idProductoPadre ? 'Variante' : 'Simple';
     const invList = p.inventarioSucursales || [];
     if (invList.length === 0) {
       if (filterSucursalId) continue;
       rows.push({
-        sku: p.sku || '', nombre: p.nombre || '', tipo: p.tieneVariantes ? 'Padre' : 'Simple',
+        sku: p.sku || '', nombre: p.nombre || '', tipo,
         sucursal: '', stock: p.stockActual || 0, stockMinimo: '', stockMaximo: '',
         costoPromedio: p.costoPromedio || 0, costoTotal: (p.costoPromedio || 0) * (p.stockActual || 0),
         estado: p.activo ? 'Activo' : 'Inactivo', atributos,
@@ -1177,7 +1194,7 @@ function buildInventoryRows(products, filterSucursalId) {
       for (const inv of invList) {
         if (filterSucursalId && inv.idSucursal != filterSucursalId) continue;
         rows.push({
-          sku: p.sku || '', nombre: p.nombre || '', tipo: p.tieneVariantes ? 'Padre' : 'Simple',
+          sku: p.sku || '', nombre: p.nombre || '', tipo,
           sucursal: inv.sucursalNombre || '', stock: inv.stock || 0,
           stockMinimo: inv.stockMinimo ?? '', stockMaximo: inv.stockMaximo ?? '',
           costoPromedio: p.costoPromedio || 0, costoTotal: (p.costoPromedio || 0) * (inv.stock || 0),
@@ -1204,7 +1221,9 @@ async function exportarInventarioCSV() {
   const sucursalNombre = document.getElementById('exportSucursalSelect')?.selectedOptions?.[0]?.textContent || '';
   Utils.showToast('Exportando inventario...', 'info');
   try {
-    const products = await fetchAllProducts();
+    const params = new URLSearchParams({ activo: 'true' });
+    if (sucursalId) params.set('idSucursal', sucursalId);
+    const products = (await API.get('/productos/exportar?' + params.toString())) || [];
     const rows = buildInventoryRows(products, sucursalId || null);
     const headers = ['SKU', 'Nombre', 'Tipo', 'Sucursal', 'Stock', 'Stock Min', 'Stock Max', 'Costo Promedio', 'Costo Total', 'Atributos', 'Estado'];
     if (sucursalId) {

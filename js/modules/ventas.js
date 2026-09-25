@@ -2290,9 +2290,9 @@ async function aplicarPromocion(promoId) {
     }
 
     const productExists = state.productos.find(p => p.idProducto === promo.idProducto);
-    if (!productExists) {
-      const data = await API.get('/productos?search=&activo=true&page=0&size=500');
-      state.productos = data.content || [];
+    if (!productExists && promo.idProducto) {
+      const data = await API.get('/productos/' + promo.idProducto);
+      state.productos = [...state.productos.filter(p => p.idProducto !== promo.idProducto), data];
     }
 
     const prod = state.productos.find(p => p.idProducto === promo.idProducto);
@@ -2344,7 +2344,7 @@ async function aplicarCombo(comboId) {
       return;
     }
 
-    const data = await API.get('/productos?activo=true&page=0&size=500');
+    const data = await API.get('/productos/para-venta?page=0&size=500&idSucursal=' + (state.caja?.idSucursal || ''));
     const allProductos = data.content || [];
     const desc = combo.descuentoPorcentaje || 0;
 
