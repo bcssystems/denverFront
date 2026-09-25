@@ -434,6 +434,15 @@ body {
   border-left: 1px dashed var(--border);
 }
 
+.producto-node-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 /* ─── Action Buttons ─── */
 .btn-action {
   width: 34px; height: 34px;

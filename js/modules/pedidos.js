@@ -62,8 +62,7 @@ async function cargarSucursalesSelect() {
 
 async function cargarProductosCatalogo() {
   try {
-    const result = await API.get('/productos?activo=true&page=0&size=500&sort=nombre,ASC');
-    const all = result.content || [];
+    const all = await API.get('/productos/exportar?activo=true');
     state.parentCostMap = {};
     all.forEach(p => {
       if (p.tieneVariantes && !p.idProductoPadre) {
