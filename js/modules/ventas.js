@@ -126,11 +126,15 @@ function bindEvents() {
 
   document.getElementById('btnVerInventario')?.addEventListener('click', () => {
     const input = document.getElementById('posProductSearch');
+    if (state.posProductPanelOpen) {
+      ocultarPanelProductos();
+      if (input) input.value = '';
+      return;
+    }
     if (input) {
       input.value = '';
       input.focus();
     }
-    state.posProductPanelOpen = true;
     buscarProductos(true);
   });
 
@@ -142,13 +146,6 @@ function bindEvents() {
     });
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') buscarProductos();
-    });
-    document.addEventListener('click', (e) => {
-      const results = document.getElementById('posProductResults');
-      if (results && !e.target.closest('.pos-panel-product-search')) {
-        results.classList.add('d-none');
-        state.posProductPanelOpen = false;
-      }
     });
   }
 
@@ -591,6 +588,27 @@ function actualizarPreciosCart() {
   renderCart();
 }
 
+function marcarBotonInventario(abierto) {
+  const btn = document.getElementById('btnVerInventario');
+  if (!btn) return;
+  btn.classList.toggle('active', abierto);
+  btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+}
+
+function mostrarPanelProductos() {
+  const results = document.getElementById('posProductResults');
+  if (results) results.classList.remove('d-none');
+  state.posProductPanelOpen = true;
+  marcarBotonInventario(true);
+}
+
+function ocultarPanelProductos() {
+  const results = document.getElementById('posProductResults');
+  if (results) results.classList.add('d-none');
+  state.posProductPanelOpen = false;
+  marcarBotonInventario(false);
+}
+
 async function buscarProductos(showAll) {
   const q = document.getElementById('posProductSearch')?.value?.trim() || '';
   const results = document.getElementById('posProductResults');
@@ -598,8 +616,7 @@ async function buscarProductos(showAll) {
   if (!results || !list) return;
 
   if (q.length < 1 && !showAll) {
-    results.classList.add('d-none');
-    state.posProductPanelOpen = false;
+    ocultarPanelProductos();
     return;
   }
 
@@ -668,10 +685,10 @@ async function buscarProductos(showAll) {
         });
       });
     }
-    results.classList.remove('d-none');
+    mostrarPanelProductos();
   } catch (_) {
     list.innerHTML = '<div class="pos-product-result-item text-muted">Error al buscar</div>';
-    results.classList.remove('d-none');
+    mostrarPanelProductos();
   }
 }
 
@@ -729,9 +746,6 @@ async function agregarAlCart(prodId) {
   }
 
   renderCart();
-  document.getElementById('posProductResults')?.classList.add('d-none');
-  document.getElementById('posProductSearch').value = '';
-  state.posProductPanelOpen = false;
 }
 
 function renderCart() {
